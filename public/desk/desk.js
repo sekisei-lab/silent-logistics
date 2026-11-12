@@ -76,7 +76,7 @@
       }
       return `<div class="card"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
-        <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
+        <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚${j.sameDay ? ' <span class="tag warn">⚡当日便</span>' : ''}</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
   }
 

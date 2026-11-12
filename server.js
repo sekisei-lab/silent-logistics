@@ -20,7 +20,8 @@ const LICENSE_RANK = { small: 1, medium: 2, large: 3 };
 const LICENSE_JA = { small: '普通', medium: '中型', large: '大型' };
 // 車種マスタ（一般的な区分に固定）。pallets は 11型パレット換算の積載目安
 const TRUCKS = {
-  kei: { label: '軽貨物', rank: 1, license: 'small', pallets: 1, payloadKg: 350 },
+  keitora: { label: '軽トラ', rank: 1, license: 'small', pallets: 1, payloadKg: 350 },
+  keivan: { label: '軽バン', rank: 1, license: 'small', pallets: 1, payloadKg: 350 },
   t2: { label: '2t', rank: 2, license: 'small', pallets: 4, payloadKg: 2000 },
   t4: { label: '4t', rank: 3, license: 'medium', pallets: 8, payloadKg: 4000 },
   t10: { label: '10t（大型）', rank: 4, license: 'large', pallets: 16, payloadKg: 10000 },
@@ -49,6 +50,7 @@ function seed() {
     { id: 'd1', name: '王（デモ）', lang: 'zh', license: 'large', vehicle: '10t ウイング T-101', vehicleSpec: { type: 't10', body: 'wing' }, residenceExpiry: '2028-03-31', lat: 35.7, lng: 139.8, lastReal: 0, dutyStart: null },
     { id: 'd2', name: '李（デモ）', lang: 'zh', license: 'medium', vehicle: '4t バン（パワーゲート付）T-202', vehicleSpec: { type: 't4', body: 'van', tailLift: true }, residenceExpiry: new Date(now + 55 * 864e5).toISOString().slice(0, 10), lat: 35.65, lng: 139.75, lastReal: 0, dutyStart: null },
     { id: 'd3', name: '張（デモ）', lang: 'zh', license: 'large', vehicle: '10t 冷凍 T-303', vehicleSpec: { type: 't10', body: 'reefer' }, residenceExpiry: '2027-09-30', lat: 35.55, lng: 139.72, lastReal: 0, dutyStart: null },
+    { id: 'd4', name: '趙（デモ）', lang: 'zh', license: 'small', vehicle: '軽トラ K-404', vehicleSpec: { type: 'keitora', body: 'flat' }, residenceExpiry: '2028-06-30', lat: 35.6, lng: 139.72, lastReal: 0, dutyStart: null },
   ];
   const shippers = [
     { id: 'c1', name: 'サンプル食品（デモ）' },
@@ -60,6 +62,7 @@ function seed() {
     { id: 'J-1001', shipperId: 'c1', truckType: 't10', cargo: '食品 パレット12枚', pallets: 12, body: 'wing', windowStart: h(1.5), windowEnd: h(2.5), driverId: null, state: 'open', createdAt: h(-1), timeline: [], messages: [], stops: [mkStop('pickup', 's1', ['w_wing_open']), mkStop('dropoff', 's3', ['w_pallet_swap'])] },
     { id: 'J-1002', shipperId: 'c2', truckType: 't4', pallets: 4, body: 'van', tailLift: true, cargo: '家電 箱 40個（約4パレット換算）', windowStart: h(3), windowEnd: h(4), driverId: 'd2', state: 'offered', createdAt: h(-1), timeline: [], messages: [], stops: [mkStop('pickup', 's4', ['w_manual_load', 'w_seal_check'], { forklift: false, helper: true }), mkStop('dropoff', 's5', ['w_manual_unload', 'w_tail_lift'], { forklift: false, inspection: true })] },
     { id: 'J-1003', shipperId: 'c3', truckType: 't10', pallets: 8, body: 'reefer', cargo: '冷凍品 パレット8枚', windowStart: h(5), windowEnd: h(6), driverId: null, state: 'open', createdAt: h(-0.5), timeline: [], messages: [], stops: [mkStop('pickup', 's2', []), mkStop('dropoff', 's1', [])] },
+    { id: 'J-1005', shipperId: 'c3', truckType: 'keitora', pallets: 1, body: 'flat', sameDay: true, cargo: '建材 小口 3点（当日便）', windowStart: h(0.4), windowEnd: h(1.4), driverId: null, state: 'open', createdAt: h(-0.1), timeline: [], messages: [], stops: [mkStop('pickup', 's1', ['w_manual_load'], { forklift: false }), mkStop('dropoff', 's2', ['w_manual_unload'], { forklift: false })] },
     { id: 'J-1004', shipperId: 'c1', truckType: 't10', pallets: 4, body: 'van', cargo: '日用品 パレット4枚', windowStart: h(2), windowEnd: h(3), driverId: null, state: 'open', createdAt: h(-0.2), timeline: [], messages: [], stops: [mkStop('pickup', 's1', []), mkStop('dropoff', 's3', [])] },
   ];
   return { sites, drivers, shippers, jobs };
@@ -166,9 +169,13 @@ function evaluate(d, j) {
       else add('info', `現案件 ${cur.id} の完了後に連続配車が可能（${hhmm(arrival)}着見込み）`);
     }
   }
+  if (j.sameDay) {
+    add('info', '当日便: 近くの小型車・軽トラが有利（小回りが利く）');
+    if (T.rank >= 4) add('warn', '当日便に大型車は小回りが利きにくい');
+  }
   const errors = items.filter((i) => i.level === 'error').length, warns = items.filter((i) => i.level === 'warn').length;
   const late = items.some((i) => i.msg.includes('間に合いません'));
-  const score = errors ? 1e9 : (mode === 'combine' ? 0 : mode === 'idle' ? etaMin : etaMin + 30) + (late ? 500 : 0) + warns * 5;
+  const score = errors ? 1e9 : (mode === 'combine' ? 0 : mode === 'idle' ? etaMin : etaMin + 30) + (late ? 500 : 0) + warns * 5 + (j.sameDay ? (T.rank - 1) * 8 : 0);
   return { driverId: d.id, items, mode, etaMin, arrivalAt: arrival ? new Date(arrival).toISOString() : null, score };
 }
 const checkAssign = (d, j) => evaluate(d, j).items;
@@ -291,7 +298,7 @@ route('POST', '/api/jobs', (p, b) => {
   const start = new Date(b.windowStart);
   if (isNaN(start)) throw httpErr(400, '日時が不正です');
   const j = {
-    id: 'J-' + (1001 + db.jobs.length + Math.floor(Math.random() * 900)), shipperId: b.shipperId, truckType: TRUCKS[b.truckType] ? b.truckType : 't10', body: BODIES[b.body] ? b.body : 'van', tailLift: !!b.tailLift, pallets: Math.max(1, Number(b.pallets) || 1),
+    id: 'J-' + (1001 + db.jobs.length + Math.floor(Math.random() * 900)), shipperId: b.shipperId, truckType: TRUCKS[b.truckType] ? b.truckType : 't10', body: BODIES[b.body] ? b.body : 'van', tailLift: !!b.tailLift, sameDay: !!b.sameDay, pallets: Math.max(1, Number(b.pallets) || 1),
     cargo: String(b.cargo || ''), windowStart: start.toISOString(), windowEnd: new Date(start.getTime() + 3600e3).toISOString(),
     driverId: null, state: 'open', createdAt: new Date().toISOString(), timeline: [], messages: [],
     stops: [st('pickup', b.pickupSiteId, b.pickupWork, b.pickupWh), st('dropoff', b.dropoffSiteId, b.dropoffWork, b.dropoffWh)],

@@ -14,7 +14,7 @@ server.listen(0, async () => {
   const ok = async (m, p, b) => { const r = await call(m, p, b); assert.strictEqual(r.status, 200, `${m} ${p} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   try {
     let s = await ok('GET', '/api/bootstrap');
-    assert.ok(s.sites.length >= 5 && s.drivers.length === 3 && s.jobs.length === 4);
+    assert.ok(s.sites.length >= 5 && s.drivers.length === 4 && s.jobs.length === 5);
 
     // 免許区分が足りないドライバー（中型）に大型案件は割り当てられない
     let r = await call('POST', '/api/jobs/J-1001/assign', { driverId: 'd2' });
@@ -29,7 +29,12 @@ server.listen(0, async () => {
     assert.ok(cand('J-1003', 'd1').items.some((i) => i.level === 'error'), '冷凍案件に非冷凍車は不可');
     assert.strictEqual(cand('J-1003', 'd3').mode, 'idle');
     assert.ok(!cand('J-1003', 'd3').items.some((i) => i.level === 'error'));
-    assert.ok(s.trucks.t10 && s.bodies.reefer);
+    assert.ok(s.trucks.t10 && s.bodies.reefer && s.trucks.keitora && s.trucks.keivan);
+    // 当日便（軽トラ）: 軽トラのドライバーが最優先、大型車には警告
+    const sd = s.jobs.find((x) => x.id === 'J-1005');
+    assert.strictEqual(sd.sameDay, true);
+    assert.strictEqual(sd.candidates[0].driverId, 'd4', '当日便は近くの軽トラが最優先');
+    assert.ok(sd.candidates.find((c) => c.driverId === 'd1').items.some((i) => i.msg.includes('当日便に大型車')));
     // パワーゲート必須の案件: ゲートなしの10t車は不可、ゲート付きの4tは可
     const tl = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's3', windowStart: new Date(Date.now() + 7200e3).toISOString(), truckType: 't4', body: 'van', pallets: 2, tailLift: true, cargo: 'tl' });
     s = await ok('GET', '/api/bootstrap');

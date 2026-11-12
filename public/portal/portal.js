@@ -69,7 +69,7 @@
     const tl = j.timeline.slice(-6).reverse().map((e) => `<li>${fmtTime(e.ts)} <b>${esc(e.text)}</b></li>`).join('');
     return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
       <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
-      <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}${j.tailLift ? '・パワーゲート' : ''}・${j.pallets}枚</div>
+      <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}${j.tailLift ? '・パワーゲート' : ''}${j.sameDay ? '・⚡当日便' : ''}・${j.pallets}枚</div>
       <div style="margin:6px 0">${d ? `🚚 ${esc(d.name)}（${esc(d.vehicle)}）${lang ? lang.flag + ' ' + esc(lang.label) : ''}` : '<span class="muted">ドライバー調整中</span>'}</div>
       <div class="stops">${stops}</div>${troubles}${actions}
       <details style="margin-top:6px"><summary class="small muted">履歴</summary><ul class="timeline">${tl || '<li>なし</li>'}</ul></details></div>`;
@@ -99,7 +99,8 @@
         <div class="grid3"><label class="f">荷台タイプ<select name="body">${Object.keys(data.bodies).map((k) => `<option value="${k}">${esc(data.bodies[k])}</option>`).join('')}</select></label>
         <label class="f">車格<select name="truckType">${Object.keys(data.trucks).map((k) => `<option value="${k}" ${k === 't10' ? 'selected' : ''}>${esc(data.trucks[k].label)}（最大${data.trucks[k].pallets}枚）</option>`).join('')}</select></label>
         <label class="f">パレット数（11型換算）<input type="number" name="pallets" min="1" max="24" value="8" required></label></div>
-        <div class="checks"><label><input type="checkbox" name="tailLift"> ⬆️ パワーゲート付きの車両が必要</label></div></fieldset>
+        <div class="checks"><label><input type="checkbox" name="tailLift"> ⬆️ パワーゲート付きの車両が必要</label>
+          <label><input type="checkbox" name="sameDay"> ⚡ 当日便（急ぎ・軽トラ等の小回り優先）</label></div></fieldset>
       <div class="grid2">${stopSection('pickup', '② 積込み（積地）', 's1', ['w_wing_open'])}${stopSection('dropoff', '③ 荷降ろし（届け先）', 's3', [])}</div>
       <fieldset class="sec"><legend>④ 日時・荷物</legend><div class="grid2"><label class="f">到着希望日時<input type="datetime-local" name="windowStart" value="${local}" required></label>
         <label class="f">荷物の内容<input name="cargo" placeholder="例: 食品 パレット10枚" required></label></div></fieldset>
@@ -156,7 +157,7 @@
       e.preventDefault();
       const f = new FormData(fn), g = (n) => f.getAll(n);
       const wh = (p) => ({ forklift: f.get(p + 'Forklift') === '1', helper: f.get(p + 'Helper') === '1', inspection: f.get(p + 'Inspection') === '1' });
-      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), truckType: f.get('truckType'), body: f.get('body'), tailLift: f.get('tailLift') === 'on', pallets: f.get('pallets'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork'), pickupWh: wh('pickup'), dropoffWh: wh('dropoff') };
+      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), truckType: f.get('truckType'), body: f.get('body'), tailLift: f.get('tailLift') === 'on', sameDay: f.get('sameDay') === 'on', pallets: f.get('pallets'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork'), pickupWh: wh('pickup'), dropoffWh: wh('dropoff') };
       act(async () => { await api('POST', '/api/jobs', body); tab = 'jobs'; $('view').innerHTML = ''; }, $('newmsg'));
     };
     const fs = $('f_site');
