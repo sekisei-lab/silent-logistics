@@ -5,12 +5,10 @@
 (function () {
   const LANGS = [
     { code: 'ja', label: '日本語', flag: '🇯🇵', speech: 'ja-JP' },
-    { code: 'en', label: 'English', flag: '🇬🇧', speech: 'en-US' },
-    { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳', speech: 'vi-VN' },
-    { code: 'id', label: 'Bahasa Indonesia', flag: '🇮🇩', speech: 'id-ID' },
+    { code: 'zh', label: '中文', flag: '🇨🇳', speech: 'zh-CN' },
   ];
 
-  // [icon, ja, en, vi, id]
+  // [icon, ja, en, vi, id] ※現在の対応言語は日本語と中国語のみ（zh は下の ZH）。en/vi/id は将来の追加用に保持
   const rows = {
     // ---- 画面文言 ----
     ui_select_driver: ['👤', 'あなたを選んでください', 'Choose your name', 'Chọn tên của bạn', 'Pilih nama Anda'],
@@ -98,10 +96,90 @@
     m_work_request: ['🛠️', '作業をお願いします', 'Please do this work', 'Vui lòng thực hiện công việc này', 'Mohon lakukan pekerjaan ini'],
   };
 
+  const ZH = {
+    "ui_select_driver": "请选择您的名字",
+    "ui_jobs_new": "新任务",
+    "ui_jobs_none": "暂无任务",
+    "ui_accept": "接单",
+    "ui_decline": "拒绝",
+    "ui_pickup": "装货",
+    "ui_dropoff": "卸货",
+    "ui_time": "时间",
+    "ui_cargo": "货物",
+    "ui_navigate": "打开导航",
+    "ui_depart": "出发",
+    "ui_arrive": "我已到达",
+    "ui_checkin": "登记签到",
+    "ui_start": "开始作业",
+    "ui_done": "作业完成",
+    "ui_photo": "拍照",
+    "ui_photo_ok": "照片已发送",
+    "ui_wait_called": "请等待叫号",
+    "ui_go_berth": "请前往月台",
+    "ui_berth": "月台",
+    "ui_your_number": "您的排队号",
+    "ui_eta": "预计到达还需",
+    "ui_min": "分钟",
+    "ui_help": "需要帮助",
+    "ui_messages": "消息",
+    "ui_site_guide": "现场指南",
+    "ui_entrance": "入口",
+    "ui_job_done": "配送完成，辛苦了",
+    "ui_back": "返回",
+    "ui_listen": "语音播放",
+    "ui_sent": "已发送",
+    "ui_current": "当前任务",
+    "ui_work_requests": "作业要求",
+    "ui_gps_on": "正在共享位置",
+    "ui_next_stop": "下一站",
+    "st_pending": "待命",
+    "st_enroute": "行驶中",
+    "st_arrived": "已到达",
+    "st_checkedin": "已登记",
+    "st_called": "已叫号",
+    "st_working": "作业中",
+    "st_done": "已完成",
+    "w_forklift_unload": "用叉车卸货",
+    "w_forklift_load": "用叉车装货",
+    "w_manual_unload": "人工卸货",
+    "w_manual_load": "人工装货",
+    "w_wing_open": "打开翼展车厢",
+    "w_seal_check": "检查封条",
+    "w_pallet_swap": "更换托盘",
+    "w_tail_lift": "使用尾板",
+    "w_sheet": "盖篷布",
+    "r_gate_check": "在门口出示登记单",
+    "r_helmet": "请戴安全帽",
+    "r_vest": "请穿反光背心",
+    "r_no_idle": "禁止怠速",
+    "r_speed5": "场内限速5公里/小时",
+    "r_one_way": "单行道",
+    "r_no_phone": "驾驶时禁止使用手机",
+    "r_engine_off": "装卸时请熄火",
+    "r_chock": "请塞好车轮挡块",
+    "t_jam": "因堵车会晚到",
+    "t_accident": "我出了事故",
+    "t_breakdown": "车辆故障",
+    "t_cargo_damage": "货物破损或倾倒",
+    "t_long_wait": "等待时间太长",
+    "t_lost": "找不到地点",
+    "t_sick": "我身体不舒服",
+    "t_sos": "紧急！请帮助我",
+    "m_ok": "明白了",
+    "m_wait10": "请再等10分钟",
+    "m_wait30": "请再等30分钟",
+    "m_proceed": "请继续前进",
+    "m_photo": "请拍照并发送",
+    "m_call_office": "办公室会给您打电话",
+    "m_stay": "请原地等待",
+    "m_cancel": "此任务已取消",
+    "m_call_berth": "请前往{berth}号月台",
+    "m_work_request": "请完成此项作业"
+  };
   const DICT = {};
   Object.keys(rows).forEach((k) => {
     const r = rows[k];
-    DICT[k] = { icon: r[0], ja: r[1], en: r[2], vi: r[3], id: r[4] };
+    DICT[k] = { icon: r[0], ja: r[1], en: r[2], vi: r[3], id: r[4], zh: ZH[k] };
   });
 
   const GROUPS = {
@@ -114,7 +192,7 @@
   function tr(key, lang, params) {
     const e = DICT[key];
     if (!e) return key;
-    let s = e[lang] || e.en || e.ja || key;
+    let s = e[lang] || e.ja || key;
     if (params) Object.keys(params).forEach((p) => { s = s.replace('{' + p + '}', params[p]); });
     return s;
   }

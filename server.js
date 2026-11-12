@@ -36,9 +36,9 @@ function seed() {
     { id: 's5', name: 'デモ店舗配送所 戸田', address: '埼玉県戸田市（デモ）', lat: 35.814, lng: 139.68, berths: ['F1', 'F2', 'F3'], rules: rule('r_gate_check', 'r_vest', 'r_no_idle', 'r_chock'), note: '' },
   ];
   const drivers = [
-    { id: 'd1', name: 'グエン（デモ）', lang: 'vi', license: 'large', vehicle: '大型 T-101', residenceExpiry: '2028-03-31', lat: 35.7, lng: 139.8, lastReal: 0, dutyStart: null },
-    { id: 'd2', name: 'プトラ（デモ）', lang: 'id', license: 'medium', vehicle: '中型 T-202', residenceExpiry: new Date(now + 55 * 864e5).toISOString().slice(0, 10), lat: 35.65, lng: 139.75, lastReal: 0, dutyStart: null },
-    { id: 'd3', name: 'アレックス（デモ）', lang: 'en', license: 'large', vehicle: '大型 T-303', residenceExpiry: '2027-09-30', lat: 35.55, lng: 139.72, lastReal: 0, dutyStart: null },
+    { id: 'd1', name: '王（デモ）', lang: 'zh', license: 'large', vehicle: '大型 T-101', residenceExpiry: '2028-03-31', lat: 35.7, lng: 139.8, lastReal: 0, dutyStart: null },
+    { id: 'd2', name: '李（デモ）', lang: 'zh', license: 'medium', vehicle: '中型 T-202', residenceExpiry: new Date(now + 55 * 864e5).toISOString().slice(0, 10), lat: 35.65, lng: 139.75, lastReal: 0, dutyStart: null },
+    { id: 'd3', name: '張（デモ）', lang: 'zh', license: 'large', vehicle: '大型 T-303', residenceExpiry: '2027-09-30', lat: 35.55, lng: 139.72, lastReal: 0, dutyStart: null },
   ];
   const shippers = [
     { id: 'c1', name: 'サンプル食品（デモ）' },
