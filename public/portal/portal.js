@@ -4,6 +4,7 @@
   const $ = (id) => document.getElementById(id);
   let data = null, tab = 'jobs', shipperId = null;
   const keep = {}; // 再描画しても保持するUI状態（バース選択・作業チェック）
+  const openDetails = new Set(); // 開いている「作業を依頼する」「履歴」（再描画しても開いたままにする）
 
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
   const STATE_JA = { open: 'ドライバー未定', offered: '打診中', accepted: '受諾済み', inprogress: '運行中', done: '完了' };
@@ -17,7 +18,7 @@
     $('shipper').innerHTML = data.shippers.map((s) => `<option value="${s.id}" ${s.id === shipperId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
     render();
   }
-  function busy() { const a = document.activeElement; return a && ['INPUT', 'TEXTAREA'].includes(a.tagName) && a.type !== 'checkbox'; }
+  function busy() { const a = document.activeElement; return a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && a.type !== 'checkbox'; }
 
   function render() {
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
@@ -31,7 +32,7 @@
   function viewJobs() {
     const mine = data.jobs.filter((j) => j.shipperId === shipperId).sort((a, b) => (a.state === 'done') - (b.state === 'done') || a.windowStart.localeCompare(b.windowStart));
     if (!mine.length) return '<div class="card muted">依頼がありません。「輸送依頼を作成」から登録してください。</div>';
-    return '<div class="grid2">' + mine.map(jobCard).join('') + '</div>';
+    return '<div class="grid2" style="align-items:start">' + mine.map(jobCard).join('') + '</div>';
   }
 
   function jobCard(j) {
@@ -57,7 +58,7 @@
       }
       if (['arrived', 'checkedin', 'called', 'working'].includes(s.stage)) {
         const checked = keep['work' + j.id] || [];
-        actions += `<details style="margin-top:8px"><summary><b>作業を依頼する（ドライバーに母国語で表示）</b></summary>
+        actions += `<details data-dk="work:${j.id}" ${openDetails.has('work:' + j.id) ? 'open' : ''} style="margin-top:8px"><summary><b>作業を依頼する（ドライバーに母国語で表示）</b></summary>
           <div class="checks">${GROUPS.work.map((k) => `<label><input type="checkbox" data-wk="${j.id}" value="${k}" ${checked.includes(k) ? 'checked' : ''}>${icon(k)} ${esc(ja(k))}</label>`).join('')}</div>
           <button class="btn" data-workreq="${j.id}" data-idx="${idx}">依頼を送信</button></details>`;
       }
@@ -66,13 +67,14 @@
     const troubles = j.messages.filter((m) => m.kind === 'trouble' && !m.resolved).map((m) => `<div class="alert ${m.key === 't_sos' || m.key === 't_accident' ? 'crit' : 'warn'}">
         <span>${icon(m.key)} <b>${esc(ja(m.key))}</b> <span class="small">${fmtTime(m.ts)}</span></span>
         <span>${GROUPS.reply.slice(0, 5).map((k) => `<button class="btn" data-reply="${j.id}" data-key="${k}" data-mid="${m.id}" title="ドライバーへ母国語で送信">${icon(k)} ${esc(ja(k))}</button>`).join(' ')}</span></div>`).join('');
-    const tl = j.timeline.slice(-6).reverse().map((e) => `<li>${fmtTime(e.ts)} <b>${esc(e.text)}</b></li>`).join('');
+    const label = (t) => t.replace(/\b([a-z]_[a-z0-9_]+)\b/g, (m) => (SL.DICT[m] ? ja(m) : m));
+    const tl = j.timeline.slice(-6).reverse().map((e) => `<li>${fmtTime(e.ts)} <b>${esc(label(e.text))}</b></li>`).join('');
     return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
       <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
       <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}${j.tailLift ? '・パワーゲート' : ''}${j.sameDay ? '・⚡当日便' : ''}・${j.pallets}枚</div>
       <div style="margin:6px 0">${d ? `🚚 ${esc(d.name)}（${esc(d.vehicle)}）${lang ? lang.flag + ' ' + esc(lang.label) : ''}` : '<span class="muted">ドライバー調整中</span>'}</div>
       <div class="stops">${stops}</div>${troubles}${actions}
-      <details style="margin-top:6px"><summary class="small muted">履歴</summary><ul class="timeline">${tl || '<li>なし</li>'}</ul></details></div>`;
+      <details data-dk="log:${j.id}" ${openDetails.has('log:' + j.id) ? 'open' : ''} style="margin-top:6px"><summary class="small muted">履歴</summary><ul class="timeline">${tl || '<li>なし</li>'}</ul></details></div>`;
   }
 
   // ---------------- 依頼作成
@@ -126,6 +128,7 @@
     try { await fn(); await load(); } catch (e) { if (msgEl) msgEl.textContent = '⚠️ ' + e.message; else alert(e.message); }
   }
   function bind() {
+    document.querySelectorAll('details[data-dk]').forEach((d) => { d.ontoggle = () => { if (d.open) openDetails.add(d.dataset.dk); else openDetails.delete(d.dataset.dk); }; });
     document.querySelectorAll('[data-berth]').forEach((s) => { s.onchange = () => { keep['berth' + s.dataset.berth] = s.value; }; });
     document.querySelectorAll('[data-wk]').forEach((c) => {
       c.onchange = () => { keep['work' + c.dataset.wk] = Array.from(document.querySelectorAll(`[data-wk="${c.dataset.wk}"]:checked`)).map((x) => x.value); };
