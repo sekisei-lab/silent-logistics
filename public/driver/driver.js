@@ -76,7 +76,7 @@
   }
   function topbar() {
     const d = me();
-    return `<div class="topbar"><div class="who"><img class="mini-truck" src="/truck.svg" alt=""> ${esc(d ? d.name : '')}${d ? ' <span class="status-dot"></span>' : ''}
+    return `<div class="topbar"><div class="who">${esc(d ? d.name : '')}${d ? ' <span class="status-dot"></span>' : ''}
       <button class="btn" data-switch="1" style="margin-left:6px;padding:4px 8px" title="Demo: switch driver">👤⇄</button>
       <a class="btn" href="/" style="padding:4px 8px;font-size:13px" title="Demo: top page">← トップ</a></div>
       <div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}" title="${esc(l.label)}">${l.flag}</button>`).join('')}</div></div>`;
@@ -87,7 +87,7 @@
     if (!meId || !me()) {
       bar.classList.add('hidden');
       lang = lang || 'en';
-      app.innerHTML = `<div class="topbar"><div class="who"><img class="mini-truck" src="/truck.svg" alt=""> <a class="btn" href="/" style="padding:4px 8px;font-size:13px">← トップ</a></div><div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}">${l.flag}</button>`).join('')}</div></div>
+      app.innerHTML = `<div class="topbar"><div class="who"><a class="btn" href="/" style="padding:4px 8px;font-size:13px">← トップ</a></div><div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}">${l.flag}</button>`).join('')}</div></div>
         <h2>${esc(T('ui_select_driver'))}</h2>` +
         data.drivers.map((d) => `<button class="driver-pick" data-pick="${d.id}"><span class="fl">${LANGS.find((l) => l.code === d.lang).flag}</span><span>${esc(d.name)}<br><span class="muted small">${esc(d.vehicle)}</span></span></button>`).join('');
       bindCommon();
@@ -111,7 +111,7 @@
     if (active) html += activeCard(active);
     if (!offers.length && !active) {
       const done = mine.filter((j) => j.state === 'done').length;
-      html += `<div class="card" style="text-align:center">${done ? '<div style="font-size:48px">🎉</div>' : '<img class="hero-truck" src="/truck.svg" alt="">'}<h2>${esc(done ? T('ui_job_done') : T('ui_jobs_none'))}</h2></div>`;
+      html += `<div class="card" style="text-align:center"><div style="font-size:48px">${done ? '🎉' : '🕒'}</div><h2>${esc(done ? T('ui_job_done') : T('ui_jobs_none'))}</h2></div>`;
     }
     return html;
   }
