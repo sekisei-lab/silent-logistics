@@ -116,7 +116,7 @@
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
       const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}`;
       if (markers[d.id]) { markers[d.id].setLatLng([d.lat, d.lng]).setPopupContent(html); }
-      else markers[d.id] = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'truck-icon', html: '🚚', iconSize: [28, 28] }) }).bindPopup(html).addTo(map);
+      else markers[d.id] = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'truck-icon', html: '<img src="/truck.svg" alt="" style="width:56px;display:block">', iconSize: [56, 26], iconAnchor: [28, 13] }) }).bindPopup(html).addTo(map);
     });
   }
 

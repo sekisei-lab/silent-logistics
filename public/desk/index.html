@@ -6,19 +6,21 @@
 <title>配車・運行管理デスク</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/truck.svg" type="image/svg+xml">
+
 <style>.truck-icon { font-size: 26px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); } .site-icon { font-size: 20px; text-align: center; }</style>
 </head>
 <body>
 <div class="pc">
   <header>
-    <h1>🗺️ 配車・運行管理デスク</h1>
+    <h1><img class="mini-truck" src="/truck.svg" alt=""> 配車・運行管理デスク</h1>
     <span class="muted small" id="clock"></span>
     <span class="grow"></span>
     <a class="small" href="/">← トップ</a>
   </header>
   <div id="alerts"></div>
   <div class="grid2" style="align-items:start">
-    <div><div id="map"></div><div class="small muted" style="margin-top:6px">🚚 車両　🏭 拠点（地図: © OpenStreetMap contributors）。GPSが届かない車両はデモ用に自動で移動します。</div></div>
+    <div><div id="map"></div><div class="small muted" style="margin-top:6px">車両（トラック画像）　🏭 拠点（地図: © OpenStreetMap contributors）。GPSが届かない車両はデモ用に自動で移動します。</div></div>
     <div id="board"></div>
   </div>
   <h3>ドライバー・法令チェック</h3>

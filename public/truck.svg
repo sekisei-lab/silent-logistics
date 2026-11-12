@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 290" role="img" aria-label="ネイビーの車体に緑のラインが1本入ったトラック">
+  <title>ネイビーの車体に緑のラインが1本入ったトラック</title>
+  <!-- 地面の影 -->
+  <ellipse cx="330" cy="262" rx="300" ry="9" fill="#000" opacity=".28"/>
+  <!-- 荷台（ウイングボディ） -->
+  <rect x="30" y="38" width="404" height="176" rx="10" fill="#0e2650" stroke="#3d63a3" stroke-width="2.5"/>
+  <line x1="30" y1="62" x2="434" y2="62" stroke="#3d63a3" stroke-width="2"/>
+  <line x1="131" y1="62" x2="131" y2="214" stroke="#1b3f7c" stroke-width="2"/>
+  <line x1="232" y1="62" x2="232" y2="214" stroke="#1b3f7c" stroke-width="2"/>
+  <line x1="333" y1="62" x2="333" y2="214" stroke="#1b3f7c" stroke-width="2"/>
+  <!-- キャブ -->
+  <path d="M444 80 L546 80 Q566 80 578 100 L618 152 Q626 164 626 178 L626 214 L444 214 Z" fill="#0e2650" stroke="#3d63a3" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M472 94 L544 94 Q556 94 564 106 L592 150 L472 150 Z" fill="#b9cfeb" stroke="#3d63a3" stroke-width="2"/>
+  <line x1="508" y1="150" x2="508" y2="214" stroke="#1b3f7c" stroke-width="2"/>
+  <rect x="514" y="170" width="18" height="5" rx="2.5" fill="#6f8fc4"/>
+  <rect x="436" y="106" width="6" height="24" rx="2" fill="#3d63a3"/>
+  <!-- 緑のライン（荷台からキャブまで横に1本） -->
+  <rect x="30" y="160" width="596" height="13" fill="#1fcf7f"/>
+  <!-- ヘッドライト・バンパー -->
+  <rect x="612" y="182" width="14" height="14" rx="3" fill="#ffd76a"/>
+  <rect x="604" y="206" width="26" height="10" rx="3" fill="#081a38" stroke="#3d63a3" stroke-width="1.5"/>
+  <!-- シャーシ -->
+  <rect x="30" y="214" width="600" height="14" rx="4" fill="#081a38" stroke="#3d63a3" stroke-width="2"/>
+  <!-- タイヤ -->
+  <g fill="#050d1f" stroke="#3d63a3" stroke-width="2.5">
+    <circle cx="112" cy="228" r="35"/><circle cx="204" cy="228" r="35"/><circle cx="530" cy="228" r="35"/>
+  </g>
+  <g fill="#8aa2c9"><circle cx="112" cy="228" r="15"/><circle cx="204" cy="228" r="15"/><circle cx="530" cy="228" r="15"/></g>
+  <g fill="#0e2650"><circle cx="112" cy="228" r="5"/><circle cx="204" cy="228" r="5"/><circle cx="530" cy="228" r="5"/></g>
+</svg>
