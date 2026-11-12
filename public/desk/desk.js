@@ -8,6 +8,7 @@
   const aiCount = {}; // AI打診の台数 { jobId: n }
   const nudgeSel = {}; // 催促・取り下げ用に選択したトラック { jobId: Set(driverId) }
   let alertsOpen = false;
+  let panelDriver = null, lastPanelHtml = ''; // 車両・ドライバーの詳細パネル
   let selectedJob = null, routeLayer = null; // 案件カードで選択中の案件（出発地→到着地を地図に表示）
   let dragging = null, pendingBoard = false; // 地図の車両マーカーをドラッグして配車する
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
@@ -17,6 +18,20 @@
   const flag = (d) => (LANGS.find((l) => l.code === d.lang) || {}).flag || '';
   const LIC = { small: 1, medium: 2, large: 3 };
   const LIC_JA = { small: '普通', medium: '中型', large: '大型' };
+
+  // 車両の状態: 待機（配車可）／運行中／遅延／要対応
+  const STATE_LABEL = { idle: '待機（配車可）', run: '運行中', late: '遅延', alert: '要対応' };
+  function driverState(d) {
+    const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
+    const L = data.limits || {}, pre = d.tenko && d.tenko.pre;
+    if (!job) return 'idle';
+    if (job.messages.some((m) => m.kind === 'trouble' && !m.resolved)) return 'alert';
+    if (d.continuousDriveMin >= L.driveMaxMin) return 'alert';
+    if (!pre || pre.result !== 'ok') return 'alert';
+    const s = job.activeStop >= 0 && job.stops[job.activeStop];
+    const late = (job.eta != null && Date.now() + job.eta * 60000 > new Date(job.windowEnd).getTime()) || (s && s.stage === 'checkedin' && Date.now() - new Date(s.checkedinAt).getTime() > 20 * 60000);
+    return late ? 'late' : 'run';
+  }
 
   async function load() { data = await api('GET', '/api/bootstrap'); render(); }
 
@@ -31,7 +46,7 @@
 
   function render() {
     $('clock').textContent = new Date().toLocaleString('ja-JP');
-    renderAlerts(); renderDrivers(); renderMap(); drawRoute(false);
+    renderAlerts(); renderDrivers(); renderMap(); drawRoute(false); renderPanel();
     if (dragging || boardBusy()) pendingBoard = true; else renderBoard();
   }
 
@@ -57,10 +72,23 @@
         items.push({ job: j.id, level: 'warn', order: 3, html: `<span>🚨 <b>${esc(j.id)}</b> 未割当（希望 ${fmtTime(j.windowStart)}）。早めに配車してください</span>` });
       }
     });
+    const L = data.limits;
     data.drivers.forEach((d) => {
-      const days = (new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5;
-      if (days < 90) items.push({ level: 'info', order: 4, html: `<span>🪪 ${esc(d.name)}: 在留期限まで残り${Math.ceil(days)}日（${esc(d.residenceExpiry)}）</span>` });
-      if (d.dutyHours > 13) items.push({ level: 'warn', order: 2, html: `<span>🕒 ${esc(d.name)}: 本日の拘束が${d.dutyHours}hです</span>` });
+      const nm = esc(d.name), plan = !!d.activeJobId || data.jobs.some((x) => x.state === 'offered' && (x.offers || []).some((o) => o.driverId === d.id && o.status === 'pending'));
+      const pre = d.tenko && d.tenko.pre;
+      const add = (level, order, text) => items.push({ driver: d.id, level, order, html: `<span>${text}</span>` });
+      if (pre && pre.result === 'ng') add('crit', 0, `⛔ <b>${nm}</b>: 乗務前点呼が不合格です（乗務不可。アルコール${pre.alcohol}／体調${pre.health === 'ok' ? '良好' : '不良'}）`);
+      else if (!pre && plan) add('warn', 1, `🩺 <b>${nm}</b>: 乗務前点呼が未実施です（出発前に必要）`);
+      if (d.continuousDriveMin >= L.driveMaxMin) add('crit', 0, `🛑 <b>${nm}</b>: 連続運転${d.continuousDriveMin}分（4時間超過。休憩が必要）`);
+      else if (d.continuousDriveMin >= L.driveWarnMin) add('warn', 1, `⏱️ <b>${nm}</b>: 連続運転${d.continuousDriveMin}分（4時間まで残り${L.driveMaxMin - d.continuousDriveMin}分）`);
+      if (d.dutyHours > L.dayWarn) add('warn', 2, `🕒 <b>${nm}</b>: 本日の拘束が${d.dutyHours}hです（原則${L.dayWarn}h）`);
+      if (d.monthHours >= L.month) add('crit', 1, `📅 <b>${nm}</b>: 月間の拘束が${d.monthHours}h（原則${L.month}h超過）`);
+      else if (d.monthHours >= L.monthWarn) add('warn', 3, `📅 <b>${nm}</b>: 月間の拘束が${d.monthHours}h（原則${L.month}hまで残り${Math.round((L.month - d.monthHours) * 10) / 10}h）`);
+      if (d.restHours != null && d.restHours < L.restWarn) add(d.restHours < L.restMin ? 'crit' : 'warn', 3, `😴 <b>${nm}</b>: 前回の休息期間が${d.restHours}h（基本${L.restWarn}h）`);
+      const sd = Math.ceil((new Date(d.vehicleInfo.shakenDue).getTime() - Date.now()) / 864e5);
+      if (sd < 30) add('warn', 4, `🔧 <b>${nm}</b>: 車検期限まで残り${sd}日（${esc(d.vehicle)}）`);
+      const days = Math.ceil((new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5);
+      if (days < 90) add('info', 5, `🪪 <b>${nm}</b>: 在留期限まで残り${days}日（${esc(d.residenceExpiry)}）`);
     });
     items.sort((a, b) => a.order - b.order);
     const cnt = { crit: 0, warn: 0, info: 0 }; items.forEach((i) => { cnt[i.level] = (cnt[i.level] || 0) + 1; });
@@ -69,8 +97,11 @@
     const first = items.length ? (tmp.querySelector('span') || tmp).textContent.trim() : '';
     $('alerts').innerHTML = items.length
       ? `<div class="alertbar ${worst}" data-alerts-toggle><b class="cnt">⚠ ${items.length}件</b><span class="small">${cnt.crit ? `重大${cnt.crit} ` : ''}${cnt.warn ? `注意${cnt.warn} ` : ''}${cnt.info ? `情報${cnt.info}` : ''}</span><span class="txt">${esc(first)}</span><span>${alertsOpen ? '▲ 閉じる' : '▼ 一覧'}</span></div>
-         <div class="alertpanel ${alertsOpen ? '' : 'hidden'}">${items.map((i) => `<div class="alert ${i.level} ${i.job ? 'jump' : ''}"${i.job ? ` data-jump="${i.job}" title="クリックで案件ボードと地図に表示"` : ''}>${i.html}</div>`).join('')}</div>`
+         <div class="alertpanel ${alertsOpen ? '' : 'hidden'}">${items.map((i) => `<div class="alert ${i.level} ${i.job || i.driver ? 'jump' : ''}"${i.job ? ` data-jump="${i.job}" title="クリックで案件ボードと地図に表示"` : i.driver ? ` data-djump="${i.driver}" title="クリックで車両・ドライバーの詳細を表示"` : ''}>${i.html}</div>`).join('')}</div>`
       : '<div class="alertbar info"><b class="cnt">✅ アラートなし</b></div>';
+    document.querySelectorAll('.alert[data-djump]').forEach((el) => {
+      el.onclick = (e) => { if (e.target.closest('button')) return; alertsOpen = false; renderAlerts(); openPanel(el.dataset.djump, true); };
+    });
     document.querySelectorAll('.alert[data-jump]').forEach((el) => {
       el.onclick = (e) => { if (e.target.closest('button')) return; jumpToJob(el.dataset.jump); };
     });
@@ -184,14 +215,88 @@
 
   // ---------------- ドライバー
   function renderDrivers() {
-    $('drivers').innerHTML = '<table><tr><th>ドライバー</th><th>言語</th><th>車両・免許</th><th>在留期限</th><th>本日の拘束</th><th>状況</th></tr>' + data.drivers.map((d) => {
-      const days = Math.ceil((new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5);
-      const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
-      return `<tr><td><b>${esc(d.name)}</b></td><td>${flag(d)} ${esc((LANGS.find((l) => l.code === d.lang) || {}).label || '')}</td><td>${esc(d.vehicle)}<br><span class="small muted">${LIC_JA[d.license]}免許／最大${data.trucks[d.vehicleSpec.type].pallets}枚</span></td>
+    const L = data.limits;
+    const warnTag = (v, w, c, text) => (v >= c ? `<span class="tag crit">${text}</span>` : v >= w ? `<span class="tag warn">${text}</span>` : '');
+    $('drivers').innerHTML = '<table><tr><th>ドライバー</th><th>車両・免許</th><th>乗務前点呼</th><th>今日の拘束</th><th>月間の拘束</th><th>休息（前回）</th><th>連続運転</th><th>在留期限</th><th>車検</th></tr>' + data.drivers.map((d) => {
+      const st = driverState(d), pre = d.tenko && d.tenko.pre;
+      const days = Math.ceil((new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5), sd = Math.ceil((new Date(d.vehicleInfo.shakenDue).getTime() - Date.now()) / 864e5);
+      return `<tr class="clickrow" data-drow="${d.id}"><td><i class="dot s-${st}"></i> <b>${esc(d.name)}</b><br><span class="small muted">${STATE_LABEL[st]}${d.activeJobId ? '・' + d.activeJobId : ''}</span></td>
+        <td>${esc(d.vehicle)}<br><span class="small muted">${LIC_JA[d.license]}免許／最大${data.trucks[d.vehicleSpec.type].pallets}枚</span></td>
+        <td>${pre ? `${pre.result === 'ok' ? '✅' : '⛔'} ${fmtTime(pre.at)}<br><span class="small muted">${esc(pre.method)}</span>` : '<span class="tag warn">未実施</span>'}</td>
+        <td>${d.dutyHours}h ${warnTag(d.dutyHours, L.dayWarn, L.dayMax, '超過')}</td>
+        <td>${d.monthHours}/${L.month}h ${warnTag(d.monthHours, L.monthWarn, L.month, d.monthHours >= L.month ? '超過' : '残り' + Math.round((L.month - d.monthHours) * 10) / 10 + 'h')}</td>
+        <td>${d.restHours}h ${d.restHours < L.restWarn ? `<span class="tag ${d.restHours < L.restMin ? 'crit' : 'warn'}">不足</span>` : ''}</td>
+        <td>${d.continuousDriveMin}分 ${warnTag(d.continuousDriveMin, L.driveWarnMin, L.driveMaxMin, d.continuousDriveMin >= L.driveMaxMin ? '要休憩' : '間もなく')}</td>
         <td>${esc(d.residenceExpiry)} ${days < 90 ? `<span class="tag warn">残り${days}日</span>` : ''}</td>
-        <td>${d.dutyHours}h ${d.dutyHours > 13 ? '<span class="tag crit">超過</span>' : ''}</td>
-        <td>${job ? `${job.id} ${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}` : '<span class="muted">待機</span>'}</td></tr>`;
-    }).join('') + '</table><div class="small muted" style="margin-top:6px">拘束時間は初回出発からの経過で簡易計算（改善基準告示の目安: 1日13時間）。実運用では勤怠・デジタコと連携します。</div>';
+        <td>${esc(d.vehicleInfo.shakenDue)} ${sd < 30 ? `<span class="tag warn">残り${sd}日</span>` : ''}</td></tr>`;
+    }).join('') + `</table><div class="small muted" style="margin-top:6px">拘束時間などの基準は改善基準告示（トラック）に基づく目安です（1日原則${L.dayWarn}h、月${L.month}h、休息は基本${L.restWarn}h・下限${L.restMin}h、連続運転4時間）。実運用前に最新の基準を要確認。実際は勤怠・デジタコと連携します。行をクリックで詳細を表示。</div>`;
+    document.querySelectorAll('[data-drow]').forEach((r) => { r.onclick = () => openPanel(r.dataset.drow, true); });
+
+    const recs = [];
+    data.drivers.forEach((d) => ['pre', 'post'].forEach((k) => { const r = d.tenko && d.tenko[k]; if (r) recs.push(Object.assign({ d }, r)); }));
+    recs.sort((a, b) => b.at.localeCompare(a.at));
+    $('tenkolog').innerHTML = recs.length ? '<table><tr><th>時刻</th><th>ドライバー</th><th>区分</th><th>方法</th><th>アルコール</th><th>体調</th><th>結果</th><th>実施者</th></tr>' + recs.map((r) => `<tr><td>${fmtTime(r.at)}</td><td>${esc(r.d.name)}</td><td>${r.kind === 'pre' ? '乗務前' : '乗務後'}</td><td>${esc(r.method)}</td><td>${Number(r.alcohol).toFixed(2)}</td><td>${r.health === 'ok' ? '良好' : '不良'}</td><td>${r.result === 'ok' ? '<span class="tag inprogress">合格</span>' : '<span class="tag crit">不合格</span>'}</td><td>${esc(r.by)}</td></tr>`).join('') + '</table><div class="small muted" style="margin-top:6px">点呼記録は法定の保存期間（一般に1年）で保管します。</div>' : '<span class="muted">本日の点呼記録はありません</span>';
+  }
+
+  // ---------------- 車両・ドライバーの詳細パネル（地図上のマーカーをクリック）
+  function meter(label, val, max, warnAt, text) {
+    const pct = Math.min(100, (val / max) * 100), cls = val >= max ? 'crit' : val >= warnAt ? 'warn' : 'ok';
+    return `<div class="meter"><div class="meter-top"><span>${label}</span><b>${text}</b></div><div class="bar"><i class="${cls}" style="width:${pct}%"></i></div></div>`;
+  }
+  function panelHtml(d) {
+    const L = data.limits, st = driverState(d), job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
+    const pre = d.tenko && d.tenko.pre, post = d.tenko && d.tenko.post;
+    const sd = Math.ceil((new Date(d.vehicleInfo.shakenDue).getTime() - Date.now()) / 864e5);
+    const sj = selectedJob && data.jobs.find((x) => x.id === selectedJob);
+    const tenkoLine = (r, label) => r ? `${r.result === 'ok' ? '✅' : '⛔'} ${label} ${fmtTime(r.at)}（${esc(r.method)}／アルコール${Number(r.alcohol).toFixed(2)}／体調${r.health === 'ok' ? '良好' : '不良'}）` : `<span class="tag warn">${label}：未実施</span>`;
+    const jobLine = job ? `<b>${job.id}</b> ${esc(site(job.stops[Math.max(job.activeStop, 0)].siteId).name)}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage]}）${job.eta != null ? `／到着まで約${job.eta}分` : ''}` : '<span class="muted">担当案件なし</span>';
+    return `<div class="vp-head"><span class="vp-title"><i class="dot s-${st}"></i> <b>${esc(d.name)}</b> <span class="tag">${STATE_LABEL[st]}</span></span><span class="grow"></span><button class="btn" data-vp-close>✕</button></div>
+      <div class="vp-cols">
+        <div>
+          <div class="small">${flag(d)} ${esc((LANGS.find((l) => l.code === d.lang) || {}).label || '')}／${LIC_JA[d.license]}免許<br>🚚 ${esc(d.vehicle)}（最大${data.trucks[d.vehicleSpec.type].pallets}枚）<br>🔧 車検 ${esc(d.vehicleInfo.shakenDue)} ${sd < 30 ? `<span class="tag warn">残り${sd}日</span>` : ''}<br>🪪 在留期限 ${esc(d.residenceExpiry)}</div>
+          <div class="small" style="margin-top:6px">${jobLine}</div>
+          ${sj ? `<div class="small muted" style="margin-top:4px">選択中の案件 ${sj.id} の出発地まで <b>${Math.round(kmBetween(d, site(sj.stops[0].siteId)))}km</b></div>` : ''}
+        </div>
+        <div>
+          ${meter('今日の拘束', d.dutyHours, L.dayMax, L.dayWarn, `${d.dutyHours}h／原則${L.dayWarn}h`)}
+          ${meter('月間の拘束', d.monthHours, L.monthMax, L.monthWarn, `${d.monthHours}h／原則${L.month}h`)}
+          ${meter('連続運転', d.continuousDriveMin, L.driveMaxMin, L.driveWarnMin, `${d.continuousDriveMin}分／4時間`)}
+          <div class="small">休息（前回） <b>${d.restHours}h</b> ${d.restHours < L.restWarn ? `<span class="tag ${d.restHours < L.restMin ? 'crit' : 'warn'}">基本${L.restWarn}h</span>` : ''}</div>
+        </div>
+      </div>
+      <div class="small" style="margin:6px 0">${tenkoLine(pre, '乗務前点呼')}<br>${tenkoLine(post, '乗務後点呼')}</div>
+      <div class="vp-form"><b class="small">点呼を記録（運行管理者）</b>
+        <select id="vp-kind"><option value="pre">乗務前</option><option value="post">乗務後</option></select>
+        <select id="vp-method"><option>対面</option><option>IT点呼</option><option>電話</option></select>
+        <label class="small">アルコール <input id="vp-alc" type="number" step="0.01" min="0" value="0.00" style="width:76px"></label>
+        <select id="vp-health"><option value="ok">体調良好</option><option value="bad">体調不良</option></select>
+        <button class="btn primary" data-vp-tenko="${d.id}">記録</button></div>`;
+  }
+  function renderPanel() {
+    const el = $('vpanel');
+    if (!panelDriver) { el.classList.add('hidden'); return; }
+    const d = drv(panelDriver);
+    if (!d) { el.classList.add('hidden'); return; }
+    const a = document.activeElement;
+    if (el.contains(a) && ['INPUT', 'SELECT'].includes(a.tagName)) return; // 入力中は描き直さない
+    const html = panelHtml(d);
+    if (html !== lastPanelHtml) {
+      el.innerHTML = html; lastPanelHtml = html;
+      el.querySelector('[data-vp-close]').onclick = () => { panelDriver = null; renderPanel(); };
+      el.querySelector('[data-vp-tenko]').onclick = async () => {
+        try {
+          await api('POST', `/api/drivers/${d.id}/tenko`, { kind: $('vp-kind').value, method: $('vp-method').value, alcohol: $('vp-alc').value, health: $('vp-health').value, by: '運行管理者（デスク）' });
+          notify(`${shortName(d)} の点呼を記録しました`);
+        } catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+        lastPanelHtml = ''; await load();
+      };
+    }
+    el.classList.remove('hidden');
+  }
+  function openPanel(driverId, pan) {
+    panelDriver = driverId; lastPanelHtml = ''; renderPanel();
+    const d = drv(driverId);
+    if (pan && d && map) map.panTo([d.lat, d.lng]);
   }
 
   // ---------------- 地図
@@ -207,19 +312,18 @@
     });
     data.drivers.forEach((d) => {
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
-      const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}<br><span class="small">案件カードへドラッグして配車</span>`;
       const offered = data.jobs.some((x) => x.state === 'offered' && (x.offers || []).some((o) => o.driverId === d.id && o.status === 'pending'));
       const sj = selectedJob && data.jobs.find((x) => x.id === selectedJob);
       const dist = sj ? Math.round(kmBetween(d, site(sj.stops[0].siteId))) : null;
-      const key = (job ? 'busy:' : 'idle:') + (offered ? 'off:' : '') + (dist != null ? 'd' + dist + ':' : '') + d.name;
-      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job, offered, dist), iconSize: [48, 90], iconAnchor: [24, 22] });
+      const state = driverState(d);
+      const key = state + ':' + (offered ? 'off:' : '') + (dist != null ? 'd' + dist + ':' : '') + d.name;
+      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job, offered, dist, state), iconSize: [48, 90], iconAnchor: [24, 22] });
       const cur = markers[d.id];
       if (!cur) {
-        const m = L.marker([d.lat, d.lng], { icon: ic, zIndexOffset: 1000 }).bindPopup(html).addTo(map);
+        const m = L.marker([d.lat, d.lng], { icon: ic, zIndexOffset: 1000 }).addTo(map);
         markers[d.id] = { m, key }; attachDrag(m, d.id);
       } else {
         if (!(dragging && dragging.driverId === d.id)) cur.m.setLatLng([d.lat, d.lng]);
-        cur.m.setPopupContent(html);
         if (cur.key !== key && !dragging) { cur.m.setIcon(ic); cur.key = key; attachDrag(cur.m, d.id); }
       }
     });
@@ -262,8 +366,8 @@
 
   // ---------------- 車両マーカー（緑）をドラッグして案件カードへドロップ = 配車
   const shortName = (d) => d.name.replace(/（.*）/, '');
-  function vehHtml(d, busy, offered, dist) {
-    return `<div class="veh ${busy ? 'busy' : ''} ${offered ? 'offered' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div>${offered ? '<div class="veh-flag">打診中</div>' : ''}${dist != null ? `<div class="veh-dist">出発地まで${dist}km</div>` : ''}</div>`;
+  function vehHtml(d, busy, offered, dist, state) {
+    return `<div class="veh ${busy ? 'busy' : ''} ${offered ? 'offered' : ''} s-${state || 'idle'}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div>${offered ? '<div class="veh-flag">打診中</div>' : ''}${dist != null ? `<div class="veh-dist">出発地まで${dist}km</div>` : ''}</div>`;
   }
   function notify(text, level) {
     const el = $('dtoast'); el.textContent = text; el.style.background = level === 'crit' ? 'var(--crit)' : ''; el.style.color = level === 'crit' ? '#3a0606' : '';
@@ -293,7 +397,8 @@
   }
   function startDrag(driverId, e) {
     dragging = { driverId };
-    const ghost = document.createElement('div'); ghost.className = 'veh-ghost'; ghost.innerHTML = vehHtml(drv(driverId), false); document.body.appendChild(ghost);
+    const x0 = e.clientX, y0 = e.clientY; let moved = 0;
+    const ghost = document.createElement('div'); ghost.className = 'veh-ghost'; ghost.innerHTML = vehHtml(drv(driverId), false, false, null, driverState(drv(driverId))); document.body.appendChild(ghost);
     const tip = $('dragtip');
     document.body.classList.add('dragging'); map.dragging.disable(); map.closePopup();
     const cardAt = (ev) => { const t = document.elementFromPoint(ev.clientX, ev.clientY); return t && t.closest ? t.closest('[data-drop]') : null; };
@@ -306,7 +411,7 @@
       else if (lastY > br.bottom - 60 && lastY < br.bottom + 20) $('board').scrollTop += 14;
     }, 30);
     const move = (ev) => {
-      lastX = ev.clientX; lastY = ev.clientY;
+      lastX = ev.clientX; lastY = ev.clientY; moved = Math.max(moved, Math.hypot(ev.clientX - x0, ev.clientY - y0));
       ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
       document.querySelectorAll('.drop-hover').forEach((x) => x.classList.remove('drop-hover'));
       const card = cardAt(ev);
@@ -324,6 +429,7 @@
       const jobId = card && card.dataset.drop;
       dragging = null; pendingBoard = false;
       if (jobId) await dropAssign(jobId, driverId);
+      else if (!cancel && moved < 6) openPanel(driverId, false); // ドラッグせずに離した = クリック
       await load();
     };
     const up = (ev) => end(ev, false), cancelUp = (ev) => end(ev, true);

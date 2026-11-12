@@ -204,3 +204,33 @@ a.btn { text-decoration: none; color: var(--ink); display: inline-block; }
 .btn.ai-btn:hover { background: var(--card2); }
 .offer-chip.ai { border-color: var(--green); background: #17381f; color: #d4f7cf; }
 .board-title.row { align-items: center; gap: 10px; }
+
+/* 車両の状態色: 待機＝緑（配車できる）／運行中＝青／遅延＝黄／要対応＝赤 */
+:root { --run: #5aa9ff; --late: #f5b83d; --alert: #ff6b6b; }
+.veh.s-run .veh-badge, .veh.s-run .veh-name { background: var(--run); }
+.veh.s-late .veh-badge, .veh.s-late .veh-name { background: var(--late); }
+.veh.s-alert .veh-badge, .veh.s-alert .veh-name { background: var(--alert); }
+.veh.s-run .veh-badge { box-shadow: 0 0 0 3px rgba(90,169,255,.35), 0 2px 6px rgba(0,0,0,.5); }
+.veh.s-late .veh-badge { box-shadow: 0 0 0 3px rgba(245,184,61,.4), 0 2px 6px rgba(0,0,0,.5); }
+.veh.s-alert .veh-badge { box-shadow: 0 0 0 3px rgba(255,107,107,.45), 0 0 0 9px rgba(255,107,107,.2), 0 2px 6px rgba(0,0,0,.5); }
+.veh.busy .veh-badge { box-shadow: inherit; }
+.dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; background: var(--green); }
+.dot.s-run { background: var(--run); } .dot.s-late { background: var(--late); } .dot.s-alert { background: var(--alert); }
+.dot.ring { background: transparent; border: 2px dashed var(--warn); width: 13px; height: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--sub); margin-top: 6px; }
+/* 詳細パネル（地図の下部に重ねて表示） */
+.desk-map { position: sticky; }
+.vpanel { position: absolute; left: 8px; right: 8px; bottom: 56px; max-height: 62%; overflow: auto; z-index: 1200; background: var(--card); border: 1px solid var(--green); border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.6); font-size: 13px; }
+.vp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.vp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .vp-cols { grid-template-columns: 1fr; } }
+.meter { margin-bottom: 6px; }
+.meter-top { display: flex; justify-content: space-between; font-size: 12px; }
+.bar { height: 7px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 99px; background: var(--green); }
+.bar i.warn { background: var(--warn); } .bar i.crit { background: var(--crit); }
+.vp-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-top: 1px solid var(--line); padding-top: 8px; }
+.vp-form select, .vp-form input { padding: 4px 6px; font-size: 12px; }
+tr.clickrow { cursor: pointer; } tr.clickrow:hover { background: var(--card2); }
+
+.topbar .btn { white-space: nowrap; }

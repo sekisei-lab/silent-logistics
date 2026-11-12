@@ -10,6 +10,7 @@
   let data = null, meId = store.get('sl_driver'), lang = store.get('sl_lang'), view = 'main';
   let seenMsgs = JSON.parse(store.get('sl_seen') || '{}');
   let lastMsgCount = null, watchId = null, lastPosSent = 0;
+  let tenkoDraft = { health: 'ok', alcohol: null }; // 点呼の入力途中の状態
 
   const T = (k, p) => tr(k, lang, p);
   const me = () => data && data.drivers.find((d) => d.id === meId);
@@ -112,6 +113,8 @@
     if (active) html += activeCard(active);
     if (!offers.length && !active) {
       const done = mine.filter((j) => j.state === 'done').length;
+      const dd = me();
+      if (done && dd.tenko && dd.tenko.pre && dd.tenko.pre.result === 'ok') html += tenkoCard('post');
       html += `<div class="card" style="text-align:center"><div style="font-size:48px">${done ? '🎉' : '🕒'}</div><h2>${esc(done ? T('ui_job_done') : T('ui_jobs_none'))}</h2></div>`;
     }
     return html;
@@ -121,6 +124,25 @@
     const inner = `<b>${icon('ui_wh_side')} ${esc(T('ui_wh_side'))}</b>${pictGrid(whKeys(s.warehouse))}`;
     return boxed ? `<div class="card">${inner}</div>` : `<div class="muted small">${icon('ui_wh_side')} ${esc(T('ui_wh_side'))}</div>${pictGrid(whKeys(s.warehouse))}`;
   }
+  const tenkoPass = (d) => !!(d && d.tenko && d.tenko.pre && d.tenko.pre.result === 'ok');
+  function tenkoCard(kind) {
+    const d = me(), rec = d && d.tenko && d.tenko[kind];
+    if (rec) {
+      return `<div class="card"><b>${icon('ui_tenko_' + kind)} ${esc(T('ui_tenko_' + kind))}</b>
+        <div class="stage-chip" style="margin-top:6px;${rec.result === 'ok' ? '' : 'color:var(--crit)'}">${icon(rec.result === 'ok' ? 'ui_tenko_ok' : 'ui_tenko_ng')} ${esc(T(rec.result === 'ok' ? 'ui_tenko_ok' : 'ui_tenko_ng'))}</div></div>`;
+    }
+    const ready = tenkoDraft.alcohol != null;
+    return `<div class="card"><b>${icon('ui_tenko_' + kind)} ${esc(T('ui_tenko_' + kind))}</b>
+      ${kind === 'pre' ? `<div class="muted small" style="margin:4px 0">${icon('ui_tenko_need')} ${esc(T('ui_tenko_need'))}</div>` : ''}
+      <div class="pict">
+        <button class="p ${tenkoDraft.health === 'ok' ? 'req' : ''}" data-health="ok"><span class="ic">${icon('ui_health_ok')}</span><span class="tx">${esc(T('ui_health_ok'))}</span></button>
+        <button class="p ${tenkoDraft.health === 'bad' ? 'req' : ''}" data-health="bad"><span class="ic">${icon('ui_health_bad')}</span><span class="tx">${esc(T('ui_health_bad'))}</span></button>
+      </div>
+      <button class="big ghost" data-alcohol="1">${icon('ui_alcohol_check')} ${esc(T('ui_alcohol_check'))}</button>
+      ${ready ? `<div class="stage-chip">${icon('ui_alcohol_ok')} ${esc(T('ui_alcohol_ok'))}</div>` : ''}
+      <button class="big ok" data-tenko="${kind}" ${ready ? '' : 'disabled style="opacity:.4"'}>${icon('ui_tenko_done')} ${esc(T('ui_tenko_done'))}</button></div>`;
+  }
+
   function stopSummary(j, s, withWork) {
     const st = siteOf(s.siteId);
     return `<div class="row wrap"><span class="stage-chip">${icon(s.type === 'pickup' ? 'ui_pickup' : 'ui_dropoff')} ${esc(T(s.type === 'pickup' ? 'ui_pickup' : 'ui_dropoff'))}</span></div>
@@ -153,7 +175,7 @@
 
     switch (s.stage) {
       case 'pending':
-        body = jobBtn('depart', 'ui_depart', 'ui_depart', '') + navBtn + guide; say = T('ui_depart'); break;
+        body = (tenkoPass(me()) ? jobBtn('depart', 'ui_depart', 'ui_depart', '') : tenkoCard('pre')) + navBtn + guide; say = tenkoPass(me()) ? T('ui_depart') : T('ui_tenko_need'); break;
       case 'enroute':
         body = `<div class="eta">${j.eta != null ? j.eta : '–'} <small>${esc(T('ui_min'))}</small></div><div class="muted small" style="text-align:center">${icon('ui_gps_on')} ${esc(T('ui_gps_on'))}</div>
           ${navBtn}${jobBtn('arrive', 'ui_arrive', 'ui_arrive', 'ghost')}${guide}`;
@@ -210,6 +232,16 @@
   function bindCommon() {
     document.querySelectorAll('[data-lang]').forEach((b) => { b.onclick = () => { lang = b.dataset.lang; store.set('sl_lang', lang); render(); }; });
     document.querySelectorAll('[data-pick]').forEach((b) => { b.onclick = () => { meId = b.dataset.pick; store.set('sl_driver', meId); const d = me(); lang = d.lang; store.set('sl_lang', lang); lastMsgCount = null; load(); }; });
+    document.querySelectorAll('[data-health]').forEach((b) => { b.onclick = () => { tenkoDraft.health = b.dataset.health; render(); }; });
+    document.querySelectorAll('[data-alcohol]').forEach((b) => { b.onclick = () => { tenkoDraft.alcohol = 0; render(); }; }); // デモ: アルコール検知器の結果（0.00）を取り込む想定
+    document.querySelectorAll('[data-tenko]').forEach((b) => {
+      b.onclick = async () => {
+        const kind = b.dataset.tenko;
+        await act(() => api('POST', `/api/drivers/${meId}/tenko`, { kind, method: 'IT点呼', alcohol: tenkoDraft.alcohol || 0, health: tenkoDraft.health, by: 'IT点呼（アプリ）' }));
+        tenkoDraft = { health: 'ok', alcohol: null };
+        render();
+      };
+    });
     document.querySelectorAll('[data-switch]').forEach((b) => { b.onclick = () => { meId = null; store.set('sl_driver', ''); view = 'main'; lastMsgCount = null; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-nav]').forEach((b) => { b.onclick = () => { view = b.dataset.nav; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-speak]').forEach((b) => { b.onclick = () => speak(b.dataset.speak); });

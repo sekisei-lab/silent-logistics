@@ -29,6 +29,16 @@ const TRUCKS = {
 };
 const BODIES = { wing: 'ウイング車', van: 'バン（ドライ）', reefer: '冷凍冷蔵車', flat: '平ボディ' };
 const COMBINE_PICKUP_KM = 10, COMBINE_DROP_KM = 15, SERVICE_MIN = 20;
+// 改善基準告示（トラック）に基づく管理の目安。実運用前に最新の基準を要確認
+const LIM = { dayWarn: 13, dayMax: 15, monthWarn: 270, month: 284, monthMax: 310, restWarn: 11, restMin: 9, driveWarnMin: 210, driveMaxMin: 240 };
+const localDate = () => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+// 点呼記録（乗務前・乗務後）。日付が変わったら新しい日の記録にする
+function tenkoOf(d) {
+  if (!d.tenko || d.tenko.date !== localDate()) d.tenko = { date: localDate(), pre: null, post: null };
+  return d.tenko;
+}
+const tenkoOk = (d) => { const t = tenkoOf(d); return !!(t.pre && t.pre.result === 'ok'); };
+const continuousMin = (d) => (d.driveSince ? Math.max(0, Math.round((Date.now() - new Date(d.driveSince).getTime()) / 60000)) : 0);
 
 // ---------------------------------------------------------------- DB
 let db = null;
@@ -90,6 +100,24 @@ function seed() {
     run('J-2003', 'c3', 'd7', 'keivan', 'van', 1, '雑貨 小口3点', -0.8, 1.2, j2003, ['戸田で積込み完了', '横浜へ出発']),
     run('J-2004', 'c1', 'd8', 't10', 'wing', 6, '雑貨 パレット6枚', -0.3, 1.0, j2004, ['平和島に到着', '受付済み（呼び出し待ち）']),
   );
+  // ---- 運行管理データ（点呼・月間拘束・休息期間・連続運転・車検）
+  const rec = (mins, method, by) => ({ kind: 'pre', at: ago(mins), method, alcohol: 0, health: 'ok', result: 'ok', by });
+  const ops = {
+    d1: { pre: rec(330, 'IT点呼', '運行管理者 田中'), month: 176, rest: 12.5, drive: null, shaken: 200 },
+    d2: { pre: null, month: 190, rest: 11.5, drive: null, shaken: 28 },
+    d3: { pre: rec(320, '対面', '運行管理者 田中'), month: 164, rest: 13, drive: null, shaken: 120 },
+    d4: { pre: rec(300, 'IT点呼', '運行管理者 佐藤'), month: 201, rest: 12, drive: null, shaken: 300 },
+    d5: { pre: rec(420, 'IT点呼', '運行管理者 佐藤'), month: 258, rest: 11.2, drive: 215, shaken: 90 },
+    d6: { pre: rec(400, '対面', '運行管理者 田中'), month: 281, rest: 10.2, drive: 100, shaken: 60 },
+    d7: { pre: rec(380, 'IT点呼', '運行管理者 佐藤'), month: 172, rest: 12, drive: 60, shaken: 400 },
+    d8: { pre: rec(350, 'IT点呼', '運行管理者 田中'), month: 233, rest: 11.8, drive: null, shaken: 45 },
+  };
+  drivers.forEach((d) => {
+    const o = ops[d.id]; if (!o) return;
+    d.tenko = { date: localDate(), pre: o.pre, post: null };
+    d.monthHours = o.month; d.restHours = o.rest; d.driveSince = o.drive ? ago(o.drive) : null;
+    d.vehicleInfo = { shakenDue: new Date(now + o.shaken * 864e5).toISOString().slice(0, 10) };
+  });
   jobs.forEach((j) => { j.offers = j.offers || []; });
   return { sites, drivers, shippers, jobs, settings: { autoRespond: false } };
 }
@@ -139,7 +167,7 @@ function view(j) {
 function dutyHours(d) { return d.dutyStart ? (Date.now() - new Date(d.dutyStart).getTime()) / 3600e3 : 0; }
 function driverView(d) {
   const active = db.jobs.find((j) => j.driverId === d.id && (j.state === 'inprogress' || j.state === 'accepted'));
-  return Object.assign({}, d, { dutyHours: Math.round(dutyHours(d) * 10) / 10, activeJobId: active ? active.id : null, licenseJa: LICENSE_JA[d.license] });
+  return Object.assign({}, d, { dutyHours: Math.round(dutyHours(d) * 10) / 10, activeJobId: active ? active.id : null, licenseJa: LICENSE_JA[d.license], tenko: tenkoOf(d), continuousDriveMin: continuousMin(d) });
 }
 const hhmm = (ms) => { const t = new Date(ms); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
 const BODY_OK = (need, have) => (need === 'van' ? ['van', 'wing', 'reefer'].includes(have) : need === have);
@@ -161,7 +189,26 @@ function evaluate(d, j) {
   const days = (new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5;
   if (days < 0) add('error', '在留期限が切れています');
   else if (days < 90) add('warn', `在留期限が近い（残り${Math.ceil(days)}日）`);
-  if (dutyHours(d) > 13) add('warn', `本日の拘束時間が${dutyHours(d).toFixed(1)}hです（目安13h）`);
+  if (dutyHours(d) >= LIM.dayMax) add('error', `本日の拘束時間が${dutyHours(d).toFixed(1)}hです（上限${LIM.dayMax}h）`);
+  else if (dutyHours(d) > LIM.dayWarn) add('warn', `本日の拘束時間が${dutyHours(d).toFixed(1)}hです（原則${LIM.dayWarn}h）`);
+  const tk = tenkoOf(d);
+  if (!tk.pre) add('warn', '乗務前点呼が未実施です（出発前に必要）');
+  else if (tk.pre.result !== 'ok') add('error', '乗務前点呼が不合格です（乗務不可）');
+  if (d.restHours != null) {
+    if (d.restHours < LIM.restMin) add('error', `前回の休息期間が${d.restHours}h（下限${LIM.restMin}h未満）`);
+    else if (d.restHours < LIM.restWarn) add('warn', `前回の休息期間が${d.restHours}h（基本${LIM.restWarn}h）`);
+  }
+  if (d.monthHours != null) {
+    const rem = Math.round((LIM.month - d.monthHours) * 10) / 10;
+    if (d.monthHours >= LIM.monthMax) add('error', `月間の拘束が${d.monthHours}h（上限${LIM.monthMax}h）`);
+    else if (d.monthHours >= LIM.month) add('warn', `月間の拘束が${d.monthHours}h（原則${LIM.month}hを超過）`);
+    else if (d.monthHours >= LIM.monthWarn) add('warn', `月間の拘束が${d.monthHours}h（原則${LIM.month}hまで残り${rem}h）`);
+  }
+  if (continuousMin(d) >= LIM.driveMaxMin) add('warn', `連続運転が${continuousMin(d)}分です（4時間を超過。休憩が必要）`);
+  if (d.vehicleInfo) {
+    const sd = (new Date(d.vehicleInfo.shakenDue).getTime() - Date.now()) / 864e5;
+    if (sd < 0) add('error', '車検が切れています'); else if (sd < 30) add('warn', `車検期限が近い（残り${Math.ceil(sd)}日）`);
+  }
 
   const P = site(j.stops[0].siteId), D2 = site(j.stops[1].siteId);
   const now = Date.now(), end = new Date(j.windowEnd).getTime();
@@ -227,6 +274,8 @@ function advance(j, idx, action, by, body) {
     case 'depart':
       need('pending');
       if (!d) throw httpErr(409, 'ドライバー未割当です');
+      if (!tenkoOk(d)) throw httpErr(409, '乗務前点呼が未実施（または不合格）です。点呼を受けてください');
+      if (!d.driveSince) d.driveSince = new Date().toISOString();
       s.stage = 'enroute'; j.state = 'inprogress';
       if (!d.dutyStart) d.dutyStart = new Date().toISOString();
       event(j, `${label}へ出発`, 'driver');
@@ -255,6 +304,7 @@ function advance(j, idx, action, by, body) {
     }
     case 'start':
       need('called');
+      if (d) d.driveSince = null; // 荷役中は運転していない（連続運転の起点をリセット）
       s.stage = 'working'; s.startedAt = new Date().toISOString();
       event(j, `${label}で作業開始`, 'driver');
       break;
@@ -312,7 +362,7 @@ const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' 
 route('GET', '/api/bootstrap', () => ({
   sites: db.sites, shippers: db.shippers,
   drivers: db.drivers.map(driverView),
-  trucks: TRUCKS, bodies: BODIES, settings: db.settings,
+  trucks: TRUCKS, bodies: BODIES, settings: db.settings, limits: LIM,
   jobs: db.jobs.map((j) => { const v = view(j); if (j.state === 'open' || j.state === 'offered') v.candidates = candidatesFor(j); return v; }).sort((a, b) => a.windowStart.localeCompare(b.windowStart)),
 }));
 
@@ -477,6 +527,18 @@ route('POST', '/api/jobs/:id/messages/:mid/resolve', (p) => {
   const j = job(p.id), m = j && j.messages.find((x) => x.id === p.mid);
   if (!m) throw httpErr(404, '見つかりません');
   m.resolved = true; broadcast(); return m;
+});
+
+// 点呼（乗務前・乗務後）の記録。アルコール検知または体調不良は不合格（乗務不可）
+route('POST', '/api/drivers/:id/tenko', (p, b) => {
+  const d = driver(p.id);
+  if (!d) throw httpErr(404, '見つかりません');
+  const kind = b.kind === 'post' ? 'post' : 'pre';
+  const tk = tenkoOf(d);
+  if (kind === 'post' && !tk.pre) throw httpErr(409, '乗務前点呼の記録がありません');
+  const alcohol = Math.max(0, Number(b.alcohol) || 0), health = b.health === 'bad' ? 'bad' : 'ok';
+  tk[kind] = { kind, at: new Date().toISOString(), method: ['対面', 'IT点呼', '電話'].includes(b.method) ? b.method : 'IT点呼', alcohol, health, result: alcohol > 0 || health === 'bad' ? 'ng' : 'ok', by: String(b.by || '運行管理者').slice(0, 30) };
+  broadcast(); return driverView(d);
 });
 
 route('POST', '/api/drivers/:id/position', (p, b) => {

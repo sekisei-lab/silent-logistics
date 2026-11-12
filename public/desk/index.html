@@ -20,11 +20,16 @@
   </header>
   <div id="alerts"></div>
   <div class="desk-main">
-    <div class="desk-map"><div id="map"></div><div class="small muted desk-cap">緑＝車両：案件カードへドラッグで打診／カードをクリックでルート表示</div></div>
+    <div class="desk-map"><div id="map"></div>
+      <div id="vpanel" class="vpanel hidden"></div>
+      <div class="legend"><span><i class="dot s-idle"></i>待機（配車可）</span><span><i class="dot s-run"></i>運行中</span><span><i class="dot s-late"></i>遅延</span><span><i class="dot s-alert"></i>要対応</span><span><i class="dot ring"></i>打診中</span></div>
+      <div class="small muted desk-cap">マーカーをクリックで詳細／案件カードへドラッグで打診／カードをクリックでルート表示</div></div>
     <div id="board"></div>
   </div>
-  <h3>ドライバー・法令チェック</h3>
+  <h3>ドライバー・運行管理（点呼・拘束時間・車検）</h3>
   <div class="card" id="drivers"></div>
+  <h3>点呼記録簿（本日）</h3>
+  <div class="card" id="tenkolog"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="/shared.js"></script>

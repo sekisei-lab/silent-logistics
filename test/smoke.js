@@ -109,6 +109,22 @@ server.listen(0, async () => {
     const st = await ok('POST', '/api/settings', { autoRespond: false });
     assert.strictEqual(st.autoRespond, false);
 
+    // 点呼: 乗務前点呼が未実施のドライバーは出発できない。不合格（アルコール検知・体調不良）も不可
+    await ok('POST', '/api/jobs/J-1002/respond', { accept: true, driverId: 'd2' });
+    r = await call('POST', '/api/jobs/J-1002/stops/0/depart', { by: 'driver' });
+    assert.strictEqual(r.status, 409, '点呼未実施は出発不可');
+    let dv = await ok('POST', '/api/drivers/d2/tenko', { kind: 'pre', method: 'IT点呼', alcohol: 0.15, health: 'ok', by: 'test' });
+    assert.strictEqual(dv.tenko.pre.result, 'ng', 'アルコール検知は不合格');
+    r = await call('POST', '/api/jobs/J-1002/stops/0/depart', { by: 'driver' });
+    assert.strictEqual(r.status, 409, '不合格は出発不可');
+    dv = await ok('POST', '/api/drivers/d2/tenko', { kind: 'pre', method: '対面', alcohol: 0, health: 'ok', by: 'test' });
+    assert.strictEqual(dv.tenko.pre.result, 'ok');
+    await ok('POST', '/api/jobs/J-1002/stops/0/depart', { by: 'driver' });
+    s = await ok('GET', '/api/bootstrap');
+    assert.ok(s.limits.month === 284 && s.drivers.every((x) => x.tenko && typeof x.monthHours === 'number' && x.vehicleInfo), '運行管理データがあること');
+    const d6 = s.drivers.find((x) => x.id === 'd6');
+    assert.ok(s.jobs.find((x) => x.id === 'J-1005').candidates.find((c) => c.driverId === 'd6').items.some((i) => i.msg.includes('月間の拘束')), '月間拘束の警告');
+
     // 新規依頼・拠点登録・定型文以外の拒否
     const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [], pickupWh: { forklift: false, helper: true }, dropoffWh: { forklift: true, inspection: true }, tailLift: true, body: 'wing' });
     assert.strictEqual(nj.stops[0].warehouse.forklift, false);

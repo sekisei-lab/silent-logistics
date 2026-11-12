@@ -46,6 +46,17 @@
     ui_work_requests: ['🛠️', '作業の依頼', 'Work requests', 'Yêu cầu công việc', 'Permintaan kerja'],
     ui_gps_on: ['📡', '位置情報を共有中', 'Sharing location', 'Đang chia sẻ vị trí', 'Membagikan lokasi'],
     ui_next_stop: ['➡️', '次の場所', 'Next stop', 'Điểm tiếp theo', 'Pemberhentian berikutnya'],
+    // ---- 点呼 ----
+    ui_tenko_pre: ['🩺', '乗務前点呼', 'Pre-trip check', 'Pre-trip check', 'Pre-trip check'],
+    ui_tenko_post: ['🩺', '乗務後点呼', 'Post-trip check', 'Post-trip check', 'Post-trip check'],
+    ui_tenko_need: ['⚠️', '出発の前に点呼を受けてください', 'Complete the check before departing', 'Complete the check before departing', 'Complete the check before departing'],
+    ui_health_ok: ['😊', '体調は良好です', 'I feel well', 'I feel well', 'I feel well'],
+    ui_health_bad: ['😷', '体調が悪いです', 'I do not feel well', 'I do not feel well', 'I do not feel well'],
+    ui_alcohol_check: ['🍺', 'アルコールチェックをする', 'Take the alcohol test', 'Take the alcohol test', 'Take the alcohol test'],
+    ui_alcohol_ok: ['✅', 'アルコールは検知されませんでした（0.00）', 'No alcohol detected (0.00)', 'No alcohol detected (0.00)', 'No alcohol detected (0.00)'],
+    ui_tenko_done: ['✅', '点呼を完了する', 'Complete the check', 'Complete the check', 'Complete the check'],
+    ui_tenko_ok: ['✅', '点呼は合格です', 'Check passed', 'Check passed', 'Check passed'],
+    ui_tenko_ng: ['⛔', '点呼は不合格です。運行管理者の指示を待ってください', 'Check failed. Wait for the dispatcher\'s instructions', 'Check failed', 'Check failed'],
     // ---- 進捗 ----
     st_pending: ['⏸️', '待機', 'Waiting', 'Chờ', 'Menunggu'],
     st_enroute: ['🚚', '移動中', 'On the way', 'Đang di chuyển', 'Dalam perjalanan'],
@@ -107,6 +118,16 @@
   };
 
   const ZH = {
+  "ui_tenko_pre": "出车前点名",
+  "ui_tenko_post": "收车点名",
+  "ui_tenko_need": "出发前请先完成点名",
+  "ui_health_ok": "身体状况良好",
+  "ui_health_bad": "身体不舒服",
+  "ui_alcohol_check": "进行酒精检测",
+  "ui_alcohol_ok": "未检出酒精（0.00）",
+  "ui_tenko_done": "完成点名",
+  "ui_tenko_ok": "点名合格",
+  "ui_tenko_ng": "点名不合格，请等待运行管理者的指示",
   "m_nudge": "请尽快回复该任务邀请",
   "h_forklift_yes": "仓库方用叉车装卸",
   "h_forklift_no": "没有叉车（人工装卸）",
