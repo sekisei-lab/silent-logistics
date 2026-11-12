@@ -5,7 +5,7 @@
   const ja = (k, p) => tr(k, 'ja', p);
   let data = null, map = null, siteLayer = null;
   const markers = {};
-  const keep = {}; // 配車の選択状態 { jobId: driverId }
+  let dragging = null, pendingBoard = false; // 地図の車両マーカーをドラッグして配車する
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
   const STATE_JA = { open: '未割当', offered: '打診中', accepted: '受諾済み', inprogress: '運行中', done: '完了' };
   const site = (id) => data.sites.find((s) => s.id === id);
@@ -18,7 +18,8 @@
 
   function render() {
     $('clock').textContent = new Date().toLocaleString('ja-JP');
-    renderAlerts(); renderBoard(); renderDrivers(); renderMap();
+    renderAlerts(); renderDrivers(); renderMap();
+    if (dragging) pendingBoard = true; else renderBoard();
   }
 
   // ---------------- アラート
@@ -63,30 +64,20 @@
     $('board').innerHTML = '<h3 style="margin-top:0">案件ボード</h3>' + jobs.map((j) => {
       const d = j.driverId && drv(j.driverId);
       const stops = j.stops.map((s, i) => `${i ? ' → ' : ''}${esc(site(s.siteId).name)}${s.stage !== 'pending' ? `<span class="tag ${s.stage === 'done' ? 'done' : 'inprogress'}">${STAGE_JA[s.stage]}</span>` : ''}`).join('');
-      let assign = '';
+      let assign = '', dropAttr = '';
       if (j.state === 'open' || j.state === 'offered') {
+        dropAttr = ` data-drop="${j.id}"`;
         const cands = j.candidates || [];
-        const cOf = (id) => cands.find((c) => c.driverId === id);
         const best = cands.find((c) => !c.items.some((i) => i.level === 'error'));
-        const sel = keep[j.id] || (j.driverId || '');
-        const cs = sel ? cOf(sel) : null;
-        const hasErr = cs && cs.items.some((i) => i.level === 'error');
         const tagOf = (c) => c.items.some((i) => i.level === 'error') ? '✕不可' : c.mode === 'combine' ? '＋積合せ可' : c.mode === 'sequential' ? '→連続配車' : '◎空車';
-        const col = { error: 'var(--crit)', warn: 'var(--warn)', info: 'var(--brand)' }, mark = { error: '✕', warn: '⚠', info: 'ℹ' };
         assign = `${best ? `<div class="small" style="margin-top:6px">おすすめ: <b>${esc(drv(best.driverId).name)}</b>（${best.mode === 'combine' ? '走行中の車両に積み合わせ' : best.mode === 'sequential' ? '現案件の完了後に連続配車' : '待機中の空車'}）</div>` : '<div class="small" style="margin-top:6px;color:var(--crit)">条件に合うドライバーがいません</div>'}
-          <div class="row wrap" style="margin-top:6px"><select data-sel="${j.id}"><option value="">ドライバーを選択…</option>${cands.map((c) => {
-            const x = drv(c.driverId);
-            return `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${flag(x)} ${esc(x.name)}（${esc(x.vehicle)}）${tagOf(c)}</option>`;
-          }).join('')}</select>
-          <button class="btn primary" data-assign="${j.id}" ${sel && !hasErr ? '' : 'disabled'}>${j.state === 'offered' ? '再割当' : '割り当てて打診'}</button></div>
-          ${(cs ? cs.items : []).map((c) => `<div class="small" style="color:${col[c.level]}">${mark[c.level]} ${esc(c.msg)}</div>`).join('')}`;
+          <div class="small muted" style="margin-top:4px">${cands.map((c) => `${flag(drv(c.driverId))} ${esc(shortName(drv(c.driverId)))} ${tagOf(c)}`).join('　')}</div>
+          <div class="drop-hint">🚚 地図の緑の車両マーカーをここへドラッグして${j.state === 'offered' ? '再割当' : '配車'}</div>`;
       }
-      return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
+      return `<div class="card"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
         <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
-    document.querySelectorAll('[data-sel]').forEach((s) => { s.onchange = () => { keep[s.dataset.sel] = s.value; renderBoard(); }; });
-    document.querySelectorAll('[data-assign]').forEach((b) => { b.onclick = () => act(() => api('POST', `/api/jobs/${b.dataset.assign}/assign`, { driverId: keep[b.dataset.assign] })); });
   }
 
   // ---------------- ドライバー
@@ -114,10 +105,80 @@
     });
     data.drivers.forEach((d) => {
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
-      const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}`;
-      if (markers[d.id]) { markers[d.id].setLatLng([d.lat, d.lng]).setPopupContent(html); }
-      else markers[d.id] = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'truck-icon', html: '<img src="/truck.svg" alt="" style="width:56px;display:block">', iconSize: [56, 26], iconAnchor: [28, 13] }) }).bindPopup(html).addTo(map);
+      const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}<br><span class="small">案件カードへドラッグして配車</span>`;
+      const key = (job ? 'busy:' : 'idle:') + d.name;
+      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job), iconSize: [48, 58], iconAnchor: [24, 22] });
+      const cur = markers[d.id];
+      if (!cur) {
+        const m = L.marker([d.lat, d.lng], { icon: ic, zIndexOffset: 1000 }).bindPopup(html).addTo(map);
+        markers[d.id] = { m, key }; attachDrag(m, d.id);
+      } else {
+        if (!(dragging && dragging.driverId === d.id)) cur.m.setLatLng([d.lat, d.lng]);
+        cur.m.setPopupContent(html);
+        if (cur.key !== key) { cur.m.setIcon(ic); cur.key = key; attachDrag(cur.m, d.id); }
+      }
     });
+  }
+
+  // ---------------- 車両マーカー（緑）をドラッグして案件カードへドロップ = 配車
+  const shortName = (d) => d.name.replace(/（.*）/, '');
+  function vehHtml(d, busy) {
+    return `<div class="veh ${busy ? 'busy' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div></div>`;
+  }
+  function notify(text, level) {
+    const el = $('dtoast'); el.textContent = text; el.style.background = level === 'crit' ? 'var(--crit)' : ''; el.style.color = level === 'crit' ? '#3a0606' : '';
+    el.classList.remove('hidden'); clearTimeout(notify.t); notify.t = setTimeout(() => el.classList.add('hidden'), 4000);
+  }
+  function tipHtml(jobId, driverId) {
+    const j = data.jobs.find((x) => x.id === jobId), c = j && (j.candidates || []).find((x) => x.driverId === driverId);
+    if (!c) return '';
+    const mark = { error: '✕', warn: '⚠', info: 'ℹ' }, col = { error: 'var(--crit)', warn: 'var(--warn)', info: 'var(--green)' };
+    const ng = c.items.some((i) => i.level === 'error');
+    return `<b>${esc(shortName(drv(driverId)))} → ${esc(jobId)}</b>　${ng ? '<span style="color:var(--crit)">割当不可</span>' : '<span style="color:var(--green)">離して配車</span>'}` +
+      c.items.map((i) => `<div style="color:${col[i.level]}">${mark[i.level]} ${esc(i.msg)}</div>`).join('');
+  }
+  async function dropAssign(jobId, driverId) {
+    const j = data.jobs.find((x) => x.id === jobId), c = j && (j.candidates || []).find((x) => x.driverId === driverId);
+    const errs = c ? c.items.filter((i) => i.level === 'error') : [];
+    if (errs.length) { notify('✕ 割り当てできません: ' + errs.map((e) => e.msg).join(' / '), 'crit'); return; }
+    try { await api('POST', `/api/jobs/${jobId}/assign`, { driverId }); notify(`${jobId} を ${shortName(drv(driverId))} に打診しました`); }
+    catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+  }
+  function attachDrag(marker, driverId) {
+    const el = marker.getElement();
+    if (!el) return;
+    L.DomEvent.disableClickPropagation(el);
+    el.style.touchAction = 'none';
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); startDrag(driverId, e); });
+  }
+  function startDrag(driverId, e) {
+    dragging = { driverId };
+    const ghost = document.createElement('div'); ghost.className = 'veh-ghost'; ghost.innerHTML = vehHtml(drv(driverId), false); document.body.appendChild(ghost);
+    const tip = $('dragtip');
+    document.body.classList.add('dragging'); map.dragging.disable(); map.closePopup();
+    const cardAt = (ev) => { const t = document.elementFromPoint(ev.clientX, ev.clientY); return t && t.closest ? t.closest('[data-drop]') : null; };
+    const move = (ev) => {
+      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+      document.querySelectorAll('.drop-hover').forEach((x) => x.classList.remove('drop-hover'));
+      const card = cardAt(ev);
+      if (card) {
+        card.classList.add('drop-hover'); tip.innerHTML = tipHtml(card.dataset.drop, driverId); tip.classList.remove('hidden');
+        tip.style.left = Math.max(8, Math.min(ev.clientX + 18, window.innerWidth - 340)) + 'px'; tip.style.top = Math.max(8, Math.min(ev.clientY + 18, window.innerHeight - tip.offsetHeight - 8)) + 'px';
+      } else tip.classList.add('hidden');
+    };
+    const end = async (ev, cancel) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancelUp);
+      const card = cancel ? null : cardAt(ev);
+      ghost.remove(); tip.classList.add('hidden'); document.body.classList.remove('dragging'); map.dragging.enable();
+      document.querySelectorAll('.drop-hover').forEach((x) => x.classList.remove('drop-hover'));
+      const jobId = card && card.dataset.drop;
+      dragging = null; pendingBoard = false;
+      if (jobId) await dropAssign(jobId, driverId);
+      await load();
+    };
+    const up = (ev) => end(ev, false), cancelUp = (ev) => end(ev, true);
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancelUp);
+    move(e);
   }
 
   async function act(fn) { try { await fn(); await load(); } catch (e) { alert(e.message); } }

@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="/truck.svg" type="image/svg+xml">
 
-<style>.truck-icon { font-size: 26px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); } .site-icon { font-size: 20px; text-align: center; }</style>
+<style>.site-icon { font-size: 20px; text-align: center; }</style>
 </head>
 <body>
 <div class="pc">
@@ -20,7 +20,7 @@
   </header>
   <div id="alerts"></div>
   <div class="grid2" style="align-items:start">
-    <div><div id="map"></div><div class="small muted" style="margin-top:6px">車両（トラック画像）　🏭 拠点（地図: © OpenStreetMap contributors）。GPSが届かない車両はデモ用に自動で移動します。</div></div>
+    <div><div id="map"></div><div class="small muted" style="margin-top:6px">緑のマーカー＝車両（案件カードへドラッグして配車）、🏭 拠点（地図: © OpenStreetMap contributors）。GPSが届かない車両はデモ用に自動で移動します。</div></div>
     <div id="board"></div>
   </div>
   <h3>ドライバー・法令チェック</h3>
@@ -29,5 +29,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="/shared.js"></script>
 <script src="/desk/desk.js"></script>
+<div id="dtoast" class="toast hidden" style="bottom:24px"></div>
+<div id="dragtip" class="dragtip hidden"></div>
 </body>
 </html>
