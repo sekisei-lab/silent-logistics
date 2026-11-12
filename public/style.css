@@ -2,16 +2,16 @@
 :root {
   --bg: #0a1c3c; --card: #10294f; --card2: #163461; --line: #28477a;
   --ink: #eef3ff; --sub: #9db0d3;
-  --green: #1fcf7f; --green-ink: #04281a;
+  --green: #8ee37f; --green-ink: #0a2a10;  /* 若緑 */
   --brand: var(--green); --brand-ink: var(--green-ink);
-  --ok: #1fcf7f; --warn: #f5b83d; --crit: #ff6b6b;
+  --ok: #8ee37f; --warn: #f5b83d; --crit: #ff6b6b;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Noto Sans", sans-serif; background: var(--bg); color: var(--ink); line-height: 1.45; overflow-x: hidden; }
 button { font: inherit; cursor: pointer; color: inherit; }
 a { color: var(--green); }
-h1, h2, h3 { color: var(--ink); }
+h1, h2, h3 { color: var(--ink); letter-spacing: .02em; }
 .hidden { display: none !important; }
 .muted { color: var(--sub); }
 .small { font-size: 12px; }
@@ -20,7 +20,7 @@ h1, h2, h3 { color: var(--ink); }
 .topbar, .pc header, .landing .brand { position: relative; }
 .topbar::after, .pc header::after, .landing .brand::after {
   content: ''; position: absolute; left: 50%; bottom: 0; width: 100vw; transform: translateX(-50%);
-  height: 4px; background: var(--green); pointer-events: none;
+  height: 3px; background: var(--green); pointer-events: none;
 }
 
 /* ---- ドライバーアプリ ---- */
@@ -96,7 +96,7 @@ label.f > :is(input, select, textarea) { display: block; width: 100%; margin-top
 .tag { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; background: var(--card2); color: var(--sub); border: 1px solid var(--line); }
 .tag.open { background: #3a3012; color: var(--warn); border-color: #5b4a1a; }
 .tag.offered, .tag.accepted { background: #12356b; color: #8db8ff; border-color: #234a8a; }
-.tag.inprogress { background: #0f3b2b; color: var(--green); border-color: #176a4b; }
+.tag.inprogress { background: #17381f; color: var(--green); border-color: #2f6a3a; }
 .tag.done { background: var(--card2); color: var(--sub); }
 .tag.crit { background: #4a1a1a; color: var(--crit); border-color: #7a2a2a; }
 .tag.warn { background: #3a3012; color: var(--warn); border-color: #5b4a1a; }

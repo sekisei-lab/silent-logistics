@@ -15,7 +15,7 @@
   <rect x="514" y="170" width="18" height="5" rx="2.5" fill="#6f8fc4"/>
   <rect x="436" y="106" width="6" height="24" rx="2" fill="#3d63a3"/>
   <!-- 緑のライン（荷台からキャブまで横に1本） -->
-  <rect x="30" y="160" width="596" height="13" fill="#1fcf7f"/>
+  <rect x="30" y="160" width="596" height="13" fill="#8ee37f"/>
   <!-- ヘッドライト・バンパー -->
   <rect x="612" y="182" width="14" height="14" rx="3" fill="#ffd76a"/>
   <rect x="604" y="206" width="26" height="10" rx="3" fill="#081a38" stroke="#3d63a3" stroke-width="1.5"/>
