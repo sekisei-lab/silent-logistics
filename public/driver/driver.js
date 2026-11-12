@@ -76,7 +76,8 @@
   }
   function topbar() {
     const d = me();
-    return `<div class="topbar"><div class="who">${esc(d ? d.name : '')}${d ? ' <span class="status-dot"></span>' : ''}</div>
+    return `<div class="topbar"><div class="who">${esc(d ? d.name : '')}${d ? ' <span class="status-dot"></span>' : ''}
+      <button class="btn" data-switch="1" style="margin-left:6px;padding:4px 10px" title="Demo: switch driver">👤⇄</button></div>
       <div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}" title="${esc(l.label)}">${l.flag}</button>`).join('')}</div></div>`;
   }
 
@@ -201,6 +202,7 @@
   function bindCommon() {
     document.querySelectorAll('[data-lang]').forEach((b) => { b.onclick = () => { lang = b.dataset.lang; store.set('sl_lang', lang); render(); }; });
     document.querySelectorAll('[data-pick]').forEach((b) => { b.onclick = () => { meId = b.dataset.pick; store.set('sl_driver', meId); const d = me(); lang = d.lang; store.set('sl_lang', lang); lastMsgCount = null; load(); }; });
+    document.querySelectorAll('[data-switch]').forEach((b) => { b.onclick = () => { meId = null; store.set('sl_driver', ''); view = 'main'; lastMsgCount = null; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-nav]').forEach((b) => { b.onclick = () => { view = b.dataset.nav; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-speak]').forEach((b) => { b.onclick = () => speak(b.dataset.speak); });
     document.querySelectorAll('[data-respond]').forEach((b) => { b.onclick = async () => { await act(() => api('POST', `/api/jobs/${b.dataset.respond}/respond`, { accept: b.dataset.accept === '1' })); }; });
