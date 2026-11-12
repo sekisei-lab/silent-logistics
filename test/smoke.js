@@ -30,6 +30,12 @@ server.listen(0, async () => {
     assert.strictEqual(cand('J-1003', 'd3').mode, 'idle');
     assert.ok(!cand('J-1003', 'd3').items.some((i) => i.level === 'error'));
     assert.ok(s.trucks.t10 && s.bodies.reefer);
+    // パワーゲート必須の案件: ゲートなしの10t車は不可、ゲート付きの4tは可
+    const tl = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's3', windowStart: new Date(Date.now() + 7200e3).toISOString(), truckType: 't4', body: 'van', pallets: 2, tailLift: true, cargo: 'tl' });
+    s = await ok('GET', '/api/bootstrap');
+    const tc = (id) => s.jobs.find((x) => x.id === tl.id).candidates.find((c) => c.driverId === id);
+    assert.ok(tc('d1').items.some((i) => i.msg.includes('パワーゲート')), 'ゲートなしは不可');
+    assert.ok(!tc('d2').items.some((i) => i.level === 'error'), 'ゲート付き4tは可');
 
     // 出発 -> 到着(位置で自動検知) -> 受付 -> 呼び出し -> 作業 -> 完了
     await ok('POST', '/api/jobs/J-1001/stops/0/depart', { by: 'driver' });
@@ -62,7 +68,10 @@ server.listen(0, async () => {
     await ok('POST', `/api/jobs/J-1001/messages/${trouble.id}/resolve`, {});
 
     // 新規依頼・拠点登録・定型文以外の拒否
-    const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [] });
+    const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [], pickupWh: { forklift: false, helper: true }, dropoffWh: { forklift: true, inspection: true }, tailLift: true, body: 'wing' });
+    assert.strictEqual(nj.stops[0].warehouse.forklift, false);
+    assert.strictEqual(nj.stops[1].warehouse.inspection, true);
+    assert.strictEqual(nj.tailLift, true);
     assert.strictEqual(nj.state, 'open');
     await ok('POST', '/api/sites', { name: '試験拠点', lat: 35.6, lng: 139.7, berths: ['X1'], rules: ['r_helmet', 'bad'] });
     r = await call('POST', `/api/jobs/${nj.id}/messages`, { from: 'shipper', key: 'free text' });

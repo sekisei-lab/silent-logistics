@@ -102,3 +102,7 @@ th { color: var(--sub); font-weight: 600; font-size: 12px; }
 .landing { max-width: 720px; margin: 40px auto; padding: 0 16px; }
 .landing a.tile { display: block; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin: 12px 0; text-decoration: none; color: var(--ink); }
 .landing a.tile b { font-size: 18px; }
+
+.sec { border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px 10px; margin: 12px 0; }
+.sec legend { font-weight: 700; padding: 0 6px; }
+label.inl { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; margin-right: 10px; color: var(--ink); }

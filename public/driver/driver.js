@@ -1,6 +1,6 @@
 /* ドライバーアプリ: 会話なしで完結する、母国語＋絵記号UI */
 (function () {
-  const { tr, icon, esc, fmtTime, api, LANGS, GROUPS } = SL;
+  const { tr, icon, esc, fmtTime, api, LANGS, GROUPS, whKeys } = SL;
   const $ = (id) => document.getElementById(id);
   const store = {
     get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -115,10 +115,14 @@
     return html;
   }
 
+  function whCard(s, boxed) {
+    const inner = `<b>${icon('ui_wh_side')} ${esc(T('ui_wh_side'))}</b>${pictGrid(whKeys(s.warehouse))}`;
+    return boxed ? `<div class="card">${inner}</div>` : `<div class="muted small">${icon('ui_wh_side')} ${esc(T('ui_wh_side'))}</div>${pictGrid(whKeys(s.warehouse))}`;
+  }
   function stopSummary(j, s, withWork) {
     const st = siteOf(s.siteId);
     return `<div class="row wrap"><span class="stage-chip">${icon(s.type === 'pickup' ? 'ui_pickup' : 'ui_dropoff')} ${esc(T(s.type === 'pickup' ? 'ui_pickup' : 'ui_dropoff'))}</span></div>
-      <h2 style="margin-top:6px">${esc(st.name)}</h2>${withWork && s.work.length ? pictGrid(s.work, s.workRequests.map((r) => r.key)) : ''}`;
+      <h2 style="margin-top:6px">${esc(st.name)}</h2>${withWork ? whCard(s, false) + (s.work.length ? `<div class="muted small">${icon('ui_driver_work')} ${esc(T('ui_driver_work'))}</div>` + pictGrid(s.work, s.workRequests.map((r) => r.key)) : '') : ''}`;
   }
 
   function offerCard(j) {
@@ -141,7 +145,7 @@
     let body = '', say = '';
     const jobBtn = (action, label, ic, cls) => `<button class="big ${cls || ''}" data-act="${action}" data-job="${j.id}" data-idx="${idx}">${icon(ic)} ${esc(T(label))}</button>`;
     const navBtn = `<a class="big ghost" style="text-decoration:none" href="${nav}" target="_blank" rel="noopener">${icon('ui_navigate')} ${esc(T('ui_navigate'))}</a>`;
-    const guide = `<div class="card"><b>${icon('ui_site_guide')} ${esc(T('ui_site_guide'))}</b>${pictGrid(st.rules)}</div>`;
+    const guide = whCard(s, true) + `<div class="card"><b>${icon('ui_site_guide')} ${esc(T('ui_site_guide'))}</b>${pictGrid(st.rules)}</div>`;
 
     switch (s.stage) {
       case 'pending':
@@ -161,7 +165,7 @@
         say = T('m_call_berth', { berth: s.berth }); break;
       case 'working': {
         const keys = Array.from(new Set(s.work.concat(reqKeys)));
-        body = `<div class="card"><b>${icon('ui_work_requests')} ${esc(T('ui_work_requests'))}</b>${pictGrid(keys, reqKeys)}</div>
+        body = whCard(s, true) + `<div class="card"><b>${icon('ui_work_requests')} ${esc(T('ui_work_requests'))}</b>${pictGrid(keys, reqKeys)}</div>
           <button class="big ghost" data-photo="${j.id}" data-idx="${idx}">${icon(s.photo ? 'ui_photo_ok' : 'ui_photo')} ${esc(T(s.photo ? 'ui_photo_ok' : 'ui_photo'))}</button>
           ${jobBtn('done', 'ui_done', 'ui_done', 'ok')}`;
         say = keys.map((k) => T(k)).join('. '); break;

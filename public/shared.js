@@ -64,6 +64,15 @@
     w_pallet_swap: ['🔁', 'パレット交換', 'Swap pallets', 'Đổi pallet', 'Tukar palet'],
     w_tail_lift: ['⬆️', 'パワーゲート使用', 'Use the tail lift', 'Dùng bửng nâng', 'Gunakan lift gate'],
     w_sheet: ['🟫', 'シート掛け', 'Cover with a sheet', 'Phủ bạt', 'Pasang terpal'],
+    // ---- 倉庫・3PL側の対応（ドライバーへの案内） ----
+    h_forklift_yes: ['🚜', '倉庫側のフォークリフトで荷役します', 'The warehouse handles loading with a forklift', 'Kho dùng xe nâng để bốc xếp', 'Gudang memakai forklift'],
+    h_forklift_no: ['🚫', 'フォークリフトはありません（手荷役）', 'No forklift (manual handling)', 'Không có xe nâng (bốc xếp tay)', 'Tidak ada forklift (manual)'],
+    h_helper_yes: ['🧑‍🏭', '荷役スタッフが手伝います', 'Warehouse staff will help', 'Nhân viên kho sẽ hỗ trợ', 'Staf gudang akan membantu'],
+    h_helper_no: ['🙅', '荷役の手伝いはありません', 'No help with handling', 'Không có hỗ trợ bốc xếp', 'Tidak ada bantuan bongkar muat'],
+    h_inspect_yes: ['🔍', '検品があります（立ち会ってください）', 'There is an inspection (please stay)', 'Có kiểm hàng (vui lòng có mặt)', 'Ada pemeriksaan (mohon hadir)'],
+    h_inspect_no: ['➖', '検品はありません', 'No inspection', 'Không kiểm hàng', 'Tidak ada pemeriksaan'],
+    ui_wh_side: ['🏭', '倉庫側の対応', 'Warehouse side', 'Phía kho', 'Pihak gudang'],
+    ui_driver_work: ['🧑‍✈️', '運転手の作業', 'Driver tasks', 'Việc của tài xế', 'Tugas pengemudi'],
     // ---- 現場ルール ----
     r_gate_check: ['🪪', '入口で受付票を見せる', 'Show your slip at the gate', 'Xuất trình phiếu tại cổng', 'Tunjukkan slip di gerbang'],
     r_helmet: ['⛑️', 'ヘルメットを着ける', 'Wear a helmet', 'Đội mũ bảo hộ', 'Pakai helm'],
@@ -97,6 +106,14 @@
   };
 
   const ZH = {
+  "h_forklift_yes": "仓库方用叉车装卸",
+  "h_forklift_no": "没有叉车（人工装卸）",
+  "h_helper_yes": "装卸人员会协助",
+  "h_helper_no": "没有装卸协助",
+  "h_inspect_yes": "有验货（请在场）",
+  "h_inspect_no": "无需验货",
+  "ui_wh_side": "仓库方安排",
+  "ui_driver_work": "司机的工作",
     "ui_select_driver": "请选择您的名字",
     "ui_jobs_new": "新任务",
     "ui_jobs_none": "暂无任务",
@@ -183,7 +200,7 @@
   });
 
   const GROUPS = {
-    work: Object.keys(DICT).filter((k) => k.startsWith('w_')),
+    work: Object.keys(DICT).filter((k) => k.startsWith('w_') && !k.startsWith('w_forklift')), // フォークリフトは倉庫側の対応（h_）で扱う
     rules: Object.keys(DICT).filter((k) => k.startsWith('r_')),
     trouble: Object.keys(DICT).filter((k) => k.startsWith('t_')),
     reply: ['m_ok', 'm_wait10', 'm_wait30', 'm_proceed', 'm_photo', 'm_call_office', 'm_stay', 'm_cancel'],
@@ -196,6 +213,8 @@
     if (params) Object.keys(params).forEach((p) => { s = s.replace('{' + p + '}', params[p]); });
     return s;
   }
+  // 倉庫側の対応 → 辞書キー
+  const whKeys = (w) => (w ? [w.forklift ? 'h_forklift_yes' : 'h_forklift_no', w.helper ? 'h_helper_yes' : 'h_helper_no', w.inspection ? 'h_inspect_yes' : 'h_inspect_no'] : []);
   const icon = (key) => (DICT[key] ? DICT[key].icon : '');
 
   function esc(s) {
@@ -229,5 +248,5 @@
     return es;
   }
 
-  window.SL = { LANGS, DICT, GROUPS, tr, icon, esc, fmtTime, fmtDate, api, stream };
+  window.SL = { LANGS, DICT, GROUPS, whKeys, tr, icon, esc, fmtTime, fmtDate, api, stream };
 })();

@@ -41,7 +41,7 @@
     const stops = j.stops.map((s, i) => {
       const st = site(s.siteId);
       const eta = i === idx && j.eta != null ? `／到着まで約${j.eta}分（${j.distKm.toFixed(1)}km）` : '';
-      return `<div class="stop ${i === idx && j.state !== 'done' ? 'active' : ''}"><div class="small muted">${s.type === 'pickup' ? '積込み' : '荷降ろし'}</div>
+      return `<div class="stop ${i === idx && j.state !== 'done' ? 'active' : ''}"><div class="small muted">${s.type === 'pickup' ? '積込み' : '荷降ろし'}／倉庫: フォーク${s.warehouse && s.warehouse.forklift ? 'あり' : 'なし'}${s.warehouse && s.warehouse.helper ? '・スタッフ補助' : ''}${s.warehouse && s.warehouse.inspection ? '・検品' : ''}</div>
         <b>${esc(st.name)}</b><br><span class="tag ${s.stage === 'done' ? 'done' : s.stage === 'pending' ? '' : 'inprogress'}">${STAGE_JA[s.stage]}</span>
         ${s.checkinNo ? ` 受付 <b>${esc(s.checkinNo)}</b>` : ''}${s.berth ? ` バース <b>${esc(s.berth)}</b>` : ''}<span class="small muted">${eta}</span>
         ${s.photo ? '<br><span class="small">📷 写真あり</span>' : ''}</div>`;
@@ -69,7 +69,7 @@
     const tl = j.timeline.slice(-6).reverse().map((e) => `<li>${fmtTime(e.ts)} <b>${esc(e.text)}</b></li>`).join('');
     return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
       <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
-      <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}・${j.pallets}枚</div>
+      <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}${j.tailLift ? '・パワーゲート' : ''}・${j.pallets}枚</div>
       <div style="margin:6px 0">${d ? `🚚 ${esc(d.name)}（${esc(d.vehicle)}）${lang ? lang.flag + ' ' + esc(lang.label) : ''}` : '<span class="muted">ドライバー調整中</span>'}</div>
       <div class="stops">${stops}</div>${troubles}${actions}
       <details style="margin-top:6px"><summary class="small muted">履歴</summary><ul class="timeline">${tl || '<li>なし</li>'}</ul></details></div>`;
@@ -78,20 +78,31 @@
   // ---------------- 依頼作成
   function siteOptions(sel) { return data.sites.map((s) => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
   function workChecks(name, defaults) { return `<div class="checks">${GROUPS.work.map((k) => `<label><input type="checkbox" name="${name}" value="${k}" ${defaults.includes(k) ? 'checked' : ''}>${icon(k)} ${esc(ja(k))}</label>`).join('')}</div>`; }
+  function whRadios(prefix) {
+    const row = (name, title, def) => `<div class="row wrap" style="margin:3px 0"><span style="min-width:170px;font-size:13px">${title}</span>
+      <label class="inl"><input type="radio" name="${prefix}${name}" value="1" ${def ? 'checked' : ''}> あり</label>
+      <label class="inl"><input type="radio" name="${prefix}${name}" value="0" ${def ? '' : 'checked'}> なし</label></div>`;
+    return row('Forklift', '🚜 フォークリフト（荷役）', true) + row('Helper', '🧑‍🏭 荷役スタッフの手伝い', false) + row('Inspection', '🔍 検品（ドライバー立ち会い）', false);
+  }
+  function stopSection(prefix, title, siteSel, defaults) {
+    return `<fieldset class="sec"><legend>${title}</legend>
+      <label class="f">拠点<select name="${prefix}SiteId">${siteOptions(siteSel)}</select></label>
+      <b class="small">運転手に依頼する作業</b>${workChecks(prefix + 'Work', defaults)}
+      <b class="small">3PL・倉庫側の対応</b>${whRadios(prefix)}</fieldset>`;
+  }
   function viewNew() {
     const t = new Date(Date.now() + 2 * 3600e3); t.setMinutes(0, 0, 0);
     const local = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    return `<form class="card" id="f_new" style="max-width:760px"><h2 style="margin:0 0 6px">輸送依頼を作成</h2>
-      <p class="small muted">積地・届け先の入口、待機場所、荷役条件は「拠点・現場ガイド」の登録内容が、ドライバーへ母国語で自動表示されます。</p>
-      <div class="grid2"><label class="f">積地（積込み）<select name="pickupSiteId">${siteOptions('s1')}</select></label>
-      <label class="f">届け先（荷降ろし）<select name="dropoffSiteId">${siteOptions('s3')}</select></label></div>
-      <div class="grid2"><div><b class="small">積込みの作業</b>${workChecks('pickupWork', ['w_forklift_load'])}</div>
-      <div><b class="small">荷降ろしの作業</b>${workChecks('dropoffWork', ['w_forklift_unload'])}</div></div>
-       <div class="grid3"><label class="f">到着希望日時<input type="datetime-local" name="windowStart" value="${local}" required></label>
-      <label class="f">荷物の内容<input name="cargo" placeholder="例: 食品 パレット10枚" required></label>
-      <label class="f">パレット数（11型換算）<input type="number" name="pallets" min="1" max="24" value="8" required></label></div>
-      <div class="grid3"><label class="f">トラックの車格<select name="truckType">${Object.keys(data.trucks).map((k) => `<option value="${k}" ${k === 't10' ? 'selected' : ''}>${esc(data.trucks[k].label)}（最大${data.trucks[k].pallets}枚）</option>`).join('')}</select></label>
-      <label class="f">荷台の種類<select name="body">${Object.keys(data.bodies).map((k) => `<option value="${k}">${esc(data.bodies[k])}</option>`).join('')}</select></label><div></div></div>
+    return `<form class="card" id="f_new" style="max-width:900px"><h2 style="margin:0 0 6px">輸送依頼を作成</h2>
+      <p class="small muted">運転手の作業と倉庫側の対応は、ドライバーへ母国語（ピクトグラム）で自動表示されます。入口・待機場所・バースは「拠点・現場ガイド」の登録内容が使われます。</p>
+      <fieldset class="sec"><legend>① トラックタイプ</legend>
+        <div class="grid3"><label class="f">荷台タイプ<select name="body">${Object.keys(data.bodies).map((k) => `<option value="${k}">${esc(data.bodies[k])}</option>`).join('')}</select></label>
+        <label class="f">車格<select name="truckType">${Object.keys(data.trucks).map((k) => `<option value="${k}" ${k === 't10' ? 'selected' : ''}>${esc(data.trucks[k].label)}（最大${data.trucks[k].pallets}枚）</option>`).join('')}</select></label>
+        <label class="f">パレット数（11型換算）<input type="number" name="pallets" min="1" max="24" value="8" required></label></div>
+        <div class="checks"><label><input type="checkbox" name="tailLift"> ⬆️ パワーゲート付きの車両が必要</label></div></fieldset>
+      <div class="grid2">${stopSection('pickup', '② 積込み（積地）', 's1', ['w_wing_open'])}${stopSection('dropoff', '③ 荷降ろし（届け先）', 's3', [])}</div>
+      <fieldset class="sec"><legend>④ 日時・荷物</legend><div class="grid2"><label class="f">到着希望日時<input type="datetime-local" name="windowStart" value="${local}" required></label>
+        <label class="f">荷物の内容<input name="cargo" placeholder="例: 食品 パレット10枚" required></label></div></fieldset>
       <button class="btn primary" type="submit">依頼を登録</button> <span id="newmsg" class="small"></span></form>`;
   }
 
@@ -134,10 +145,18 @@
       b.onclick = () => act(async () => { await api('POST', `/api/jobs/${b.dataset.reply}/messages`, { from: 'shipper', key: b.dataset.key }); await api('POST', `/api/jobs/${b.dataset.reply}/messages/${b.dataset.mid}/resolve`, {}); });
     });
     const fn = $('f_new');
+    if (fn) {
+      [['pickup', 'w_manual_load'], ['dropoff', 'w_manual_unload']].forEach(([p, k]) => {
+        fn.querySelectorAll(`[name="${p}Forklift"]`).forEach((r) => {
+          r.onchange = () => { const c = fn.querySelector(`[name="${p}Work"][value="${k}"]`); if (c && r.checked) c.checked = r.value === '0'; };
+        });
+      });
+    }
     if (fn) fn.onsubmit = (e) => {
       e.preventDefault();
       const f = new FormData(fn), g = (n) => f.getAll(n);
-      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), truckType: f.get('truckType'), body: f.get('body'), pallets: f.get('pallets'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork') };
+      const wh = (p) => ({ forklift: f.get(p + 'Forklift') === '1', helper: f.get(p + 'Helper') === '1', inspection: f.get(p + 'Inspection') === '1' });
+      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), truckType: f.get('truckType'), body: f.get('body'), tailLift: f.get('tailLift') === 'on', pallets: f.get('pallets'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork'), pickupWh: wh('pickup'), dropoffWh: wh('dropoff') };
       act(async () => { await api('POST', '/api/jobs', body); tab = 'jobs'; $('view').innerHTML = ''; }, $('newmsg'));
     };
     const fs = $('f_site');
