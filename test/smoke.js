@@ -14,7 +14,7 @@ server.listen(0, async () => {
   const ok = async (m, p, b) => { const r = await call(m, p, b); assert.strictEqual(r.status, 200, `${m} ${p} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   try {
     let s = await ok('GET', '/api/bootstrap');
-    assert.ok(s.sites.length >= 5 && s.drivers.length === 4 && s.jobs.length === 5);
+    assert.ok(s.sites.length >= 5 && s.drivers.length === 8 && s.jobs.length === 9);
 
     // 免許区分が足りないドライバー（中型）に大型案件は割り当てられない
     let r = await call('POST', '/api/jobs/J-1001/assign', { driverId: 'd2' });
@@ -30,6 +30,10 @@ server.listen(0, async () => {
     assert.strictEqual(cand('J-1003', 'd3').mode, 'idle');
     assert.ok(!cand('J-1003', 'd3').items.some((i) => i.level === 'error'));
     assert.ok(s.trucks.t10 && s.bodies.reefer && s.trucks.keitora && s.trucks.keivan);
+    // 運送中のテストデータ
+    const run = s.jobs.filter((x) => x.state === 'inprogress');
+    assert.strictEqual(run.length, 4, '運送中の案件が4件あること');
+    assert.ok(run.some((x) => x.eta != null), '移動中の案件はETAが出ること');
     // 当日便（軽トラ）: 軽トラのドライバーが最優先、大型車には警告
     const sd = s.jobs.find((x) => x.id === 'J-1005');
     assert.strictEqual(sd.sameDay, true);

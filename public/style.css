@@ -109,7 +109,7 @@ label.f > :is(input, select, textarea) { display: block; width: 100%; margin-top
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
 th { color: var(--sub); font-weight: 600; font-size: 12px; }
-#map { height: 460px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
+#map { height: 560px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
 #map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(1.15) contrast(.95) saturate(.5); }
 .alert { padding: 8px 12px; border-radius: 10px; margin: 6px 0; font-size: 14px; display: flex; gap: 8px; align-items: center; justify-content: space-between; border: 1px solid var(--line); }
 .alert.crit { background: #4a1a1a; color: #ffd6d6; border-color: #7a2a2a; }
@@ -152,3 +152,13 @@ a.btn { text-decoration: none; color: var(--ink); display: inline-block; }
 .offer-chip.done { border-color: var(--line); background: var(--card); color: var(--sub); cursor: default; }
 .veh.offered .veh-badge { outline: 3px dashed var(--warn); outline-offset: 3px; }
 .veh-flag { font-size: 10px; font-weight: 700; background: var(--warn); color: #3b2a00; border-radius: 6px; padding: 0 5px; line-height: 14px; }
+
+/* 案件の選択とルート表示 */
+.job-card { cursor: pointer; }
+.job-card.selected { outline: 2px solid var(--green); outline-offset: -2px; }
+.pin { position: relative; }
+.pin-dot { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,.6); border: 2px solid #fff; }
+.pin-dot.a { background: var(--green); color: var(--green-ink); }
+.pin-dot.b { background: #fff; color: var(--bg); }
+.pin-label { position: absolute; left: 36px; top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: rgba(10,28,60,.9); border: 1px solid var(--line); border-radius: 8px; padding: 1px 8px; }
+.veh-dist { font-size: 10px; font-weight: 700; color: var(--ink); background: rgba(10,28,60,.92); border: 1px solid var(--green); border-radius: 6px; padding: 0 5px; line-height: 14px; white-space: nowrap; }

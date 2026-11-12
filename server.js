@@ -65,6 +65,31 @@ function seed() {
     { id: 'J-1005', shipperId: 'c3', truckType: 'keitora', pallets: 1, body: 'flat', sameDay: true, cargo: '建材 小口 3点（当日便）', windowStart: h(0.4), windowEnd: h(1.4), driverId: null, state: 'open', createdAt: h(-0.1), timeline: [], messages: [], stops: [mkStop('pickup', 's1', ['w_manual_load'], { forklift: false }), mkStop('dropoff', 's2', ['w_manual_unload'], { forklift: false })] },
     { id: 'J-1004', shipperId: 'c1', truckType: 't10', pallets: 4, body: 'van', cargo: '日用品 パレット4枚', windowStart: h(2), windowEnd: h(3), driverId: null, state: 'open', createdAt: h(-0.2), timeline: [], messages: [], stops: [mkStop('pickup', 's1', []), mkStop('dropoff', 's3', [])] },
   ];
+
+  // ---- 運送中のテストデータ（地図・案件ボードの確認用）
+  const S = (id) => sites.find((x) => x.id === id);
+  const lerp = (a, b, t) => ({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t });
+  const ago = (m) => new Date(now - m * 60000).toISOString();
+  const done = (st, m) => Object.assign(st, { stage: 'done', berth: '1', checkinNo: 'X-001', arrivedAt: ago(m + 25), checkedinAt: ago(m + 18), calledAt: ago(m + 12), startedAt: ago(m + 8), doneAt: ago(m) });
+  const demoDriver = (id, name, license, vehicle, spec, pos, dutyMin) => ({ id, name, lang: 'zh', license, vehicle, vehicleSpec: spec, residenceExpiry: '2028-03-31', lat: pos.lat, lng: pos.lng, lastReal: 0, dutyStart: ago(dutyMin), simKm: 0.4 });
+  drivers.push(
+    demoDriver('d5', '孫（デモ）', 'medium', '4t バン T-505', { type: 't4', body: 'van' }, lerp(S('s4'), S('s5'), 0.4), 190),
+    demoDriver('d6', '周（デモ）', 'large', '10t ウイング T-606', { type: 't10', body: 'wing' }, { lat: 35.44, lng: 139.69 }, 120),
+    demoDriver('d7', '呉（デモ）', 'small', '軽バン K-707', { type: 'keivan', body: 'van' }, lerp(S('s5'), S('s3'), 0.3), 150),
+    demoDriver('d8', '鄭（デモ）', 'large', '10t ウイング T-808', { type: 't10', body: 'wing' }, { lat: S('s1').lat, lng: S('s1').lng }, 80),
+  );
+  const run = (id, shipperId, driverId, truckType, body, pallets, cargo, w0, w1, stops, log) => ({ id, shipperId, truckType, body, pallets, cargo, windowStart: h(w0), windowEnd: h(w1), driverId, offers: [], state: 'inprogress', createdAt: h(-3), timeline: log.map((t, i) => ({ ts: ago(60 - i * 15), who: 'system', text: t })), messages: [], stops });
+  const j2001 = [done(mkStop('pickup', 's4', ['w_manual_load']), 35), mkStop('dropoff', 's5', ['w_manual_unload'])]; j2001[1].stage = 'enroute';
+  const j2002 = [mkStop('pickup', 's2', ['w_wing_open']), mkStop('dropoff', 's1', [])]; j2002[0].stage = 'enroute';
+  const j2003 = [done(mkStop('pickup', 's5', ['w_manual_load'], { forklift: false }), 20), mkStop('dropoff', 's3', ['w_manual_unload'], { forklift: false })]; j2003[1].stage = 'enroute';
+  const j2004 = [mkStop('pickup', 's1', ['w_wing_open']), mkStop('dropoff', 's3', [])];
+  Object.assign(j2004[0], { stage: 'checkedin', checkinNo: 'A-021', arrivedAt: ago(14), checkedinAt: ago(10) });
+  jobs.push(
+    run('J-2001', 'c1', 'd5', 't4', 'van', 4, '飲料 パレット4枚', -1.2, 1.5, j2001, ['千葉で積込み完了', '戸田へ出発']),
+    run('J-2002', 'c2', 'd6', 't10', 'wing', 10, '機械部品 パレット10枚', 0.3, 1.5, j2002, ['川崎の積地へ出発']),
+    run('J-2003', 'c3', 'd7', 'keivan', 'van', 1, '雑貨 小口3点', -0.8, 1.2, j2003, ['戸田で積込み完了', '横浜へ出発']),
+    run('J-2004', 'c1', 'd8', 't10', 'wing', 6, '雑貨 パレット6枚', -0.3, 1.0, j2004, ['平和島に到着', '受付済み（呼び出し待ち）']),
+  );
   jobs.forEach((j) => { j.offers = j.offers || []; });
   return { sites, drivers, shippers, jobs };
 }
@@ -258,7 +283,7 @@ function tick() {
     const real = Date.now() - (d.lastReal || 0) < 30000;
     if (!real && SIM) {
       const dist = km(d, target);
-      const step = Math.max(0.5, dist * 0.2);
+      const step = d.simKm || Math.max(0.5, dist * 0.2);
       const r = Math.min(1, step / Math.max(dist, 0.001));
       d.lat += (target.lat - d.lat) * r; d.lng += (target.lng - d.lng) * r;
       changed = true;

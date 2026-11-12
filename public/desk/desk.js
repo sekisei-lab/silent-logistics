@@ -6,6 +6,7 @@
   let data = null, map = null, siteLayer = null;
   const markers = {};
   const nudgeSel = {}; // 催促・取り下げ用に選択したトラック { jobId: Set(driverId) }
+  let selectedJob = null, routeLayer = null; // 案件カードで選択中の案件（出発地→到着地を地図に表示）
   let dragging = null, pendingBoard = false; // 地図の車両マーカーをドラッグして配車する
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
   const STATE_JA = { open: '未割当', offered: '打診中', accepted: '受諾済み', inprogress: '運行中', done: '完了' };
@@ -19,7 +20,7 @@
 
   function render() {
     $('clock').textContent = new Date().toLocaleString('ja-JP');
-    renderAlerts(); renderDrivers(); renderMap();
+    renderAlerts(); renderDrivers(); renderMap(); drawRoute(false);
     if (dragging) pendingBoard = true; else renderBoard();
   }
 
@@ -86,10 +87,17 @@
             <button class="btn" data-withdraw="${j.id}" ${selSet.size ? '' : 'disabled'}>打診を取り下げ</button></div>` : '') +
           `<div class="drop-hint">🚚 地図の緑の車両マーカーをここへドラッグして打診${pend.length ? '（複数台に打診できます）' : ''}</div>`;
       }
-      return `<div class="card"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
+      return `<div class="card job-card ${selectedJob === j.id ? 'selected' : ''}" data-job="${j.id}"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
         <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚${j.sameDay ? ' <span class="tag warn">⚡当日便</span>' : ''}</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
+    document.querySelectorAll('#board .job-card').forEach((c) => {
+      c.onclick = (e) => {
+        if (e.target.closest('button, input, label, a, select')) return;
+        selectedJob = selectedJob === c.dataset.job ? null : c.dataset.job;
+        renderBoard(); renderMap(); drawRoute(true);
+      };
+    });
     document.querySelectorAll('[data-nsel]').forEach((c) => {
       c.onchange = () => { const set = nudgeSel[c.dataset.nsel] || (nudgeSel[c.dataset.nsel] = new Set()); if (c.checked) set.add(c.value); else set.delete(c.value); renderBoard(); };
     });
@@ -139,8 +147,10 @@
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
       const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}<br><span class="small">案件カードへドラッグして配車</span>`;
       const offered = data.jobs.some((x) => x.state === 'offered' && (x.offers || []).some((o) => o.driverId === d.id && o.status === 'pending'));
-      const key = (job ? 'busy:' : 'idle:') + (offered ? 'off:' : '') + d.name;
-      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job, offered), iconSize: [48, 72], iconAnchor: [24, 22] });
+      const sj = selectedJob && data.jobs.find((x) => x.id === selectedJob);
+      const dist = sj ? Math.round(kmBetween(d, site(sj.stops[0].siteId))) : null;
+      const key = (job ? 'busy:' : 'idle:') + (offered ? 'off:' : '') + (dist != null ? 'd' + dist + ':' : '') + d.name;
+      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job, offered, dist), iconSize: [48, 90], iconAnchor: [24, 22] });
       const cur = markers[d.id];
       if (!cur) {
         const m = L.marker([d.lat, d.lng], { icon: ic, zIndexOffset: 1000 }).bindPopup(html).addTo(map);
@@ -148,15 +158,50 @@
       } else {
         if (!(dragging && dragging.driverId === d.id)) cur.m.setLatLng([d.lat, d.lng]);
         cur.m.setPopupContent(html);
-        if (cur.key !== key) { cur.m.setIcon(ic); cur.key = key; attachDrag(cur.m, d.id); }
+        if (cur.key !== key && !dragging) { cur.m.setIcon(ic); cur.key = key; attachDrag(cur.m, d.id); }
       }
     });
   }
 
+  // ---------------- 案件の出発地→到着地ルート（住所はダミーのため、ルートは直線を曲げた概略）
+  function kmBetween(a, b) {
+    const R = 6371, rad = (x) => (x * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function curve(a, b) {
+    const mx = (a.lat + b.lat) / 2, my = (a.lng + b.lng) / 2, dx = b.lat - a.lat, dy = b.lng - a.lng;
+    const cx = mx - dy * 0.18, cy = my + dx * 0.18, pts = [];
+    for (let i = 0; i <= 28; i++) { const t = i / 28; pts.push([(1 - t) ** 2 * a.lat + 2 * (1 - t) * t * cx + t * t * b.lat, (1 - t) ** 2 * a.lng + 2 * (1 - t) * t * cy + t * t * b.lng]); }
+    return pts;
+  }
+  function drawRoute(fit) {
+    if (!map) return;
+    if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
+    routeLayer.clearLayers();
+    const j = selectedJob && data.jobs.find((x) => x.id === selectedJob);
+    if (!j) return;
+    const A = site(j.stops[0].siteId), B = site(j.stops[1].siteId), pts = curve(A, B);
+    L.polyline(pts, { color: '#0a1c3c', weight: 9, opacity: 0.85 }).addTo(routeLayer);
+    L.polyline(pts, { color: '#8ee37f', weight: 5, opacity: 1 }).addTo(routeLayer);
+    const i = Math.floor(pts.length * 0.55), p0 = pts[i - 1], p1 = pts[i + 1];
+    const ang = (Math.atan2((p1[1] - p0[1]) * Math.cos((pts[i][0] * Math.PI) / 180), p1[0] - p0[0]) * 180) / Math.PI; // 北=0°の方位
+    L.marker(pts[i], { interactive: false, icon: L.divIcon({ className: 'veh-icon', html: `<svg width="22" height="22" viewBox="0 0 22 22" style="transform:rotate(${ang}deg)"><path d="M11 2 L19 19 L11 15 L3 19 Z" fill="#8ee37f" stroke="#0a1c3c" stroke-width="1.5"/></svg>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(routeLayer);
+    const pin = (s, kind, label) => L.marker([s.lat, s.lng], { zIndexOffset: 500, icon: L.divIcon({ className: 'veh-icon', html: `<div class="pin"><div class="pin-dot ${kind}">${kind === 'a' ? '出' : '着'}</div><div class="pin-label">${label} ${esc(s.name.replace(/^デモ/, ''))}</div></div>`, iconSize: [10, 10], iconAnchor: [15, 15] }) }).addTo(routeLayer);
+    pin(A, 'a', '出発'); pin(B, 'b', '到着');
+    const d = j.driverId && drv(j.driverId);
+    if (d && j.activeStop >= 0 && j.state === 'inprogress') {
+      const t = site(j.stops[j.activeStop].siteId);
+      L.polyline([[d.lat, d.lng], [t.lat, t.lng]], { color: '#f5b83d', weight: 2, dashArray: '6 6' }).addTo(routeLayer);
+    }
+    if (fit) map.fitBounds(L.latLngBounds(pts), { padding: [90, 90], maxZoom: 13 });
+  }
+
   // ---------------- 車両マーカー（緑）をドラッグして案件カードへドロップ = 配車
   const shortName = (d) => d.name.replace(/（.*）/, '');
-  function vehHtml(d, busy, offered) {
-    return `<div class="veh ${busy ? 'busy' : ''} ${offered ? 'offered' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div>${offered ? '<div class="veh-flag">打診中</div>' : ''}</div>`;
+  function vehHtml(d, busy, offered, dist) {
+    return `<div class="veh ${busy ? 'busy' : ''} ${offered ? 'offered' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div>${offered ? '<div class="veh-flag">打診中</div>' : ''}${dist != null ? `<div class="veh-dist">出発地まで${dist}km</div>` : ''}</div>`;
   }
   function notify(text, level) {
     const el = $('dtoast'); el.textContent = text; el.style.background = level === 'crit' ? 'var(--crit)' : ''; el.style.color = level === 'crit' ? '#3a0606' : '';
