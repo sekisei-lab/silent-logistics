@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>荷主・拠点ポータル</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="pc">
+  <header>
+    <h1>🏭 荷主・拠点ポータル</h1>
+    <label class="muted small">荷主 <select id="shipper"></select></label>
+    <div class="tabs" id="tabs">
+      <button data-tab="jobs" class="on">依頼・進捗</button>
+      <button data-tab="new">輸送依頼を作成</button>
+      <button data-tab="sites">拠点・現場ガイド</button>
+    </div>
+    <a class="small" href="/">← トップ</a>
+  </header>
+  <div id="view"></div>
+</div>
+<script src="/shared.js"></script>
+<script src="/portal/portal.js"></script>
+</body>
+</html>

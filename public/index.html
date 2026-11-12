@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>無言オペレーション物流プラットフォーム（MVPデモ）</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="landing">
+  <h1>無言オペレーション物流プラットフォーム</h1>
+  <p class="muted">外国籍ドライバーが日本語を話さなくても、予約・指示・荷役・進捗確認を完結できる物流プラットフォームのMVPデモです（要件定義書 第5章のMVP範囲）。データはすべてデモ用の架空のものです。</p>
+  <a class="tile" href="/driver/"><b>🚚 ドライバーアプリ</b><br><span class="muted">スマホ向け。母国語＋絵記号で、受諾→出発→受付→呼び出し→荷役→完了まで会話なしで進行（日本語・English・Tiếng Việt・Bahasa Indonesia）</span></a>
+  <a class="tile" href="/portal/"><b>🏭 荷主・拠点ポータル（日本語）</b><br><span class="muted">輸送依頼、バース呼び出し、作業依頼、現場ガイド（拠点マスタ）登録、到着・進捗確認</span></a>
+  <a class="tile" href="/desk/"><b>🗺️ 配車・運行管理デスク（日本語）</b><br><span class="muted">配車（免許・在留期限・拘束時間の自動チェック付き）、地図で車両監視、アラート、例外対応</span></a>
+  <h3>デモの流れ</h3>
+  <ol>
+    <li>デスクで未割当の案件にドライバーを割り当てる</li>
+    <li>ドライバーアプリ（別タブ）で案件を受ける → 出発</li>
+    <li>車両が自動で近づき、到着を自動検知 → ドライバーが受付</li>
+    <li>荷主ポータルでバースを指定して呼び出し → ドライバーに母国語で表示</li>
+    <li>荷主から作業を依頼 → ドライバーがピクトグラムで確認し、完了</li>
+  </ol>
+  <p class="small muted">翻訳は初稿です。運用前にネイティブによるチェックが必要です。</p>
+  <p><button class="btn" id="reset">デモデータを初期化</button></p>
+</div>
+<script src="/shared.js"></script>
+<script>
+document.getElementById('reset').onclick = async () => {
+  if (!confirm('デモデータを初期状態に戻しますか？')) return;
+  await SL.api('POST', '/api/reset', {}); alert('初期化しました');
+};
+</script>
+</body>
+</html>

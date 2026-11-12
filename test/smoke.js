@@ -1,0 +1,64 @@
+'use strict';
+// 一連の業務フローが通ることを確認するスモークテスト（外部依存なし）
+const os = require('os'), path = require('path'), fs = require('fs');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sl-'));
+const assert = require('assert');
+const { server } = require('../server.js');
+
+server.listen(0, async () => {
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const call = async (m, p, b) => {
+    const r = await fetch(base + p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
+    const j = await r.json(); return { status: r.status, body: j };
+  };
+  const ok = async (m, p, b) => { const r = await call(m, p, b); assert.strictEqual(r.status, 200, `${m} ${p} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
+  try {
+    let s = await ok('GET', '/api/bootstrap');
+    assert.ok(s.sites.length >= 5 && s.drivers.length === 3 && s.jobs.length === 3);
+
+    // 免許区分が足りないドライバー（中型）に大型案件は割り当てられない
+    let r = await call('POST', '/api/jobs/J-1001/assign', { driverId: 'd2' });
+    assert.strictEqual(r.status, 409, '免許不足は拒否されること');
+    await ok('POST', '/api/jobs/J-1001/assign', { driverId: 'd1' });
+    await ok('POST', '/api/jobs/J-1001/respond', { accept: true });
+
+    // 出発 -> 到着(位置で自動検知) -> 受付 -> 呼び出し -> 作業 -> 完了
+    await ok('POST', '/api/jobs/J-1001/stops/0/depart', { by: 'driver' });
+    const s1 = s.sites.find((x) => x.id === 's1');
+    await ok('POST', '/api/drivers/d1/position', { lat: s1.lat, lng: s1.lng });
+    let j = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === 'J-1001');
+    assert.strictEqual(j.stops[0].stage, 'arrived', '到着が自動検知されること');
+    await ok('POST', '/api/jobs/J-1001/stops/0/checkin', { by: 'driver' });
+    r = await call('POST', '/api/jobs/J-1001/stops/0/call', { berth: 'ZZ' });
+    assert.strictEqual(r.status, 400, '存在しないバースは拒否');
+    await ok('POST', '/api/jobs/J-1001/stops/0/call', { berth: 'A2', by: 'shipper' });
+    await ok('POST', '/api/jobs/J-1001/work-request', { idx: 0, key: 'w_seal_check', by: 'shipper' });
+    await ok('POST', '/api/jobs/J-1001/stops/0/start', {});
+    r = await call('POST', '/api/jobs/J-1001/stops/0/checkin', {});
+    assert.strictEqual(r.status, 409, '不正な状態遷移は拒否');
+    await ok('POST', '/api/jobs/J-1001/stops/0/done', { by: 'driver' });
+
+    // 2か所目
+    await ok('POST', '/api/jobs/J-1001/stops/1/depart', { by: 'driver' });
+    const s3 = s.sites.find((x) => x.id === 's3');
+    await ok('POST', '/api/drivers/d1/position', { lat: s3.lat, lng: s3.lng });
+    await ok('POST', '/api/jobs/J-1001/stops/1/checkin', {});
+    await ok('POST', '/api/jobs/J-1001/stops/1/call', { berth: 'D1' });
+    await ok('POST', '/api/jobs/J-1001/stops/1/start', {});
+    await ok('POST', '/api/jobs/J-1001/messages', { from: 'driver', key: 't_long_wait' });
+    await ok('POST', '/api/jobs/J-1001/stops/1/done', { by: 'driver' });
+    j = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === 'J-1001');
+    assert.strictEqual(j.state, 'done');
+    const trouble = j.messages.find((m) => m.kind === 'trouble');
+    await ok('POST', `/api/jobs/J-1001/messages/${trouble.id}/resolve`, {});
+
+    // 新規依頼・拠点登録・定型文以外の拒否
+    const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [] });
+    assert.strictEqual(nj.state, 'open');
+    await ok('POST', '/api/sites', { name: '試験拠点', lat: 35.6, lng: 139.7, berths: ['X1'], rules: ['r_helmet', 'bad'] });
+    r = await call('POST', `/api/jobs/${nj.id}/messages`, { from: 'shipper', key: 'free text' });
+    assert.strictEqual(r.status, 400, '自由記述は拒否');
+    console.log('OK: smoke test passed');
+  } catch (e) { console.error('FAIL:', e.message); process.exitCode = 1; }
+  server.close(); setTimeout(() => process.exit(), 100);
+});

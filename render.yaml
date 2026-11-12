@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: silent-logistics
+    runtime: node
+    plan: free
+    buildCommand: "echo no build"
+    startCommand: node server.js
+    healthCheckPath: /api/bootstrap
+    autoDeploy: true

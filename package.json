@@ -1,0 +1,14 @@
+{
+  "name": "silent-logistics",
+  "version": "0.1.0",
+  "description": "外国籍ドライバー向け 無言オペレーション物流プラットフォーム（MVPプロトタイプ）",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
