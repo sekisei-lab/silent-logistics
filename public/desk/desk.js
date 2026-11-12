@@ -20,10 +20,19 @@
 
   async function load() { data = await api('GET', '/api/bootstrap'); render(); }
 
+  // ボード内のプルダウンを操作中か（操作中は自動更新で描き直さない）
+  function boardBusy() {
+    const a = document.activeElement;
+    return !!(a && a.tagName === 'SELECT' && $('board').contains(a));
+  }
+  function flushBoard() {
+    setTimeout(() => { if (pendingBoard && !dragging && !boardBusy()) { pendingBoard = false; renderBoard(); } }, 0);
+  }
+
   function render() {
     $('clock').textContent = new Date().toLocaleString('ja-JP');
     renderAlerts(); renderDrivers(); renderMap(); drawRoute(false);
-    if (dragging) pendingBoard = true; else renderBoard();
+    if (dragging || boardBusy()) pendingBoard = true; else renderBoard();
   }
 
   // ---------------- アラート
@@ -128,7 +137,7 @@
         renderBoard(); renderMap(); drawRoute(true);
       };
     });
-    document.querySelectorAll('[data-aicount]').forEach((x) => { x.onchange = () => { aiCount[x.dataset.aicount] = Number(x.value); }; });
+    document.querySelectorAll('[data-aicount]').forEach((x) => { x.onchange = () => { aiCount[x.dataset.aicount] = Number(x.value); x.blur(); flushBoard(); }; });
     document.querySelectorAll('[data-ai]').forEach((b) => {
       b.onclick = async () => {
         const id = b.dataset.ai;
@@ -323,6 +332,7 @@
   }
 
   async function act(fn) { try { await fn(); await load(); } catch (e) { alert(e.message); } }
+  $('board').addEventListener('focusout', flushBoard);
   SL.stream(load);
   setInterval(() => { $('clock').textContent = new Date().toLocaleString('ja-JP'); }, 30000);
   load();
