@@ -162,3 +162,27 @@ a.btn { text-decoration: none; color: var(--ink); display: inline-block; }
 .pin-dot.b { background: #fff; color: var(--bg); }
 .pin-label { position: absolute; left: 36px; top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: rgba(10,28,60,.9); border: 1px solid var(--line); border-radius: 8px; padding: 1px 8px; }
 .veh-dist { font-size: 10px; font-weight: 700; color: var(--ink); background: rgba(10,28,60,.92); border: 1px solid var(--green); border-radius: 6px; padding: 0 5px; line-height: 14px; white-space: nowrap; }
+
+/* 配車デスク: 地図を画面に固定し、案件ボードだけ独立スクロール */
+:root { --desk-h: calc(100vh - 170px); }
+.desk-main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.desk-map { position: sticky; top: 8px; }
+.desk-map #map { height: var(--desk-h); min-height: 420px; }
+.desk-cap { margin-top: 4px; font-size: 12px; }
+#board { height: var(--desk-h); min-height: 420px; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
+.board-title { position: sticky; top: 0; z-index: 3; margin: 0 0 8px; padding: 4px 0 6px; background: var(--bg); }
+@media (max-width: 900px) {
+  .desk-main { grid-template-columns: 1fr; }
+  .desk-map { top: 0; z-index: 20; background: var(--bg); padding-bottom: 4px; }
+  .desk-map #map { height: 42vh; min-height: 260px; }
+  #board { height: auto; overflow: visible; padding-right: 0; }
+}
+/* アラートは1行バー（開くと一覧を重ねて表示。地図を押し下げない） */
+#alerts { position: relative; margin-bottom: 10px; z-index: 30; }
+.alertbar { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 12px; cursor: pointer; font-size: 14px; }
+.alertbar.crit { background: #4a1a1a; border-color: #7a2a2a; color: #ffd6d6; }
+.alertbar.warn { background: #3a3012; border-color: #5b4a1a; color: #ffe6a8; }
+.alertbar .cnt { white-space: nowrap; }
+.alertbar .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .9; }
+.alertpanel { position: absolute; left: 0; right: 0; top: calc(100% + 4px); max-height: 60vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; box-shadow: 0 12px 32px rgba(0,0,0,.6); }
+.pc header { margin-bottom: 10px; }

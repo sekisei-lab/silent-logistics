@@ -6,6 +6,7 @@
   let data = null, map = null, siteLayer = null;
   const markers = {};
   const nudgeSel = {}; // 催促・取り下げ用に選択したトラック { jobId: Set(driverId) }
+  let alertsOpen = false;
   let selectedJob = null, routeLayer = null; // 案件カードで選択中の案件（出発地→到着地を地図に表示）
   let dragging = null, pendingBoard = false; // 地図の車両マーカーをドラッグして配車する
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
@@ -52,7 +53,16 @@
       if (d.dutyHours > 13) items.push({ level: 'warn', order: 2, html: `<span>🕒 ${esc(d.name)}: 本日の拘束が${d.dutyHours}hです</span>` });
     });
     items.sort((a, b) => a.order - b.order);
-    $('alerts').innerHTML = items.length ? items.map((i) => `<div class="alert ${i.level}">${i.html}</div>`).join('') : '<div class="alert info">✅ 現在アラートはありません</div>';
+    const cnt = { crit: 0, warn: 0, info: 0 }; items.forEach((i) => { cnt[i.level] = (cnt[i.level] || 0) + 1; });
+    const worst = cnt.crit ? 'crit' : cnt.warn ? 'warn' : 'info';
+    const tmp = document.createElement('div'); tmp.innerHTML = items.length ? items[0].html : '';
+    const first = items.length ? (tmp.querySelector('span') || tmp).textContent.trim() : '';
+    $('alerts').innerHTML = items.length
+      ? `<div class="alertbar ${worst}" data-alerts-toggle><b class="cnt">⚠ ${items.length}件</b><span class="small">${cnt.crit ? `重大${cnt.crit} ` : ''}${cnt.warn ? `注意${cnt.warn} ` : ''}${cnt.info ? `情報${cnt.info}` : ''}</span><span class="txt">${esc(first)}</span><span>${alertsOpen ? '▲ 閉じる' : '▼ 一覧'}</span></div>
+         <div class="alertpanel ${alertsOpen ? '' : 'hidden'}">${items.map((i) => `<div class="alert ${i.level}">${i.html}</div>`).join('')}</div>`
+      : '<div class="alertbar info"><b class="cnt">✅ アラートなし</b></div>';
+    const tg = document.querySelector('[data-alerts-toggle]');
+    if (tg) tg.onclick = (e) => { if (e.target.closest('button')) return; alertsOpen = !alertsOpen; renderAlerts(); };
     document.querySelectorAll('[data-reply]').forEach((b) => {
       b.onclick = () => act(async () => { await api('POST', `/api/jobs/${b.dataset.reply}/messages`, { from: 'desk', key: b.dataset.key }); await api('POST', `/api/jobs/${b.dataset.reply}/messages/${b.dataset.mid}/resolve`, {}); });
     });
@@ -63,7 +73,8 @@
   function renderBoard() {
     const order = { open: 0, offered: 1, accepted: 2, inprogress: 3, done: 4 };
     const jobs = data.jobs.slice().sort((a, b) => order[a.state] - order[b.state] || a.windowStart.localeCompare(b.windowStart));
-    $('board').innerHTML = '<h3 style="margin-top:0">案件ボード</h3>' + jobs.map((j) => {
+    const boardEl = $('board'), scrollTop = boardEl.scrollTop;
+    boardEl.innerHTML = '<h3 class="board-title">案件ボード</h3>' + jobs.map((j) => {
       const d = j.driverId && drv(j.driverId);
       const stops = j.stops.map((s, i) => `${i ? ' → ' : ''}${esc(site(s.siteId).name)}${s.stage !== 'pending' ? `<span class="tag ${s.stage === 'done' ? 'done' : 'inprogress'}">${STAGE_JA[s.stage]}</span>` : ''}`).join('');
       let assign = '', dropAttr = '';
@@ -91,6 +102,7 @@
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
         <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚${j.sameDay ? ' <span class="tag warn">⚡当日便</span>' : ''}</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
+    boardEl.scrollTop = scrollTop;
     document.querySelectorAll('#board .job-card').forEach((c) => {
       c.onclick = (e) => {
         if (e.target.closest('button, input, label, a, select')) return;
@@ -235,7 +247,16 @@
     const tip = $('dragtip');
     document.body.classList.add('dragging'); map.dragging.disable(); map.closePopup();
     const cardAt = (ev) => { const t = document.elementFromPoint(ev.clientX, ev.clientY); return t && t.closest ? t.closest('[data-drop]') : null; };
+    let lastY = null, lastX = null;
+    const auto = setInterval(() => {
+      if (lastY == null) return;
+      const br = $('board').getBoundingClientRect();
+      if (lastX < br.left || lastX > br.right) return;
+      if (lastY < br.top + 60 && lastY > br.top - 20) $('board').scrollTop -= 14;
+      else if (lastY > br.bottom - 60 && lastY < br.bottom + 20) $('board').scrollTop += 14;
+    }, 30);
     const move = (ev) => {
+      lastX = ev.clientX; lastY = ev.clientY;
       ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
       document.querySelectorAll('.drop-hover').forEach((x) => x.classList.remove('drop-hover'));
       const card = cardAt(ev);
@@ -245,6 +266,7 @@
       } else tip.classList.add('hidden');
     };
     const end = async (ev, cancel) => {
+      clearInterval(auto);
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancelUp);
       const card = cancel ? null : cardAt(ev);
       ghost.remove(); tip.classList.add('hidden'); document.body.classList.remove('dragging'); map.dragging.enable();
