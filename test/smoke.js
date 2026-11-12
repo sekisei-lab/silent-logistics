@@ -14,13 +14,22 @@ server.listen(0, async () => {
   const ok = async (m, p, b) => { const r = await call(m, p, b); assert.strictEqual(r.status, 200, `${m} ${p} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   try {
     let s = await ok('GET', '/api/bootstrap');
-    assert.ok(s.sites.length >= 5 && s.drivers.length === 3 && s.jobs.length === 3);
+    assert.ok(s.sites.length >= 5 && s.drivers.length === 3 && s.jobs.length === 4);
 
     // 免許区分が足りないドライバー（中型）に大型案件は割り当てられない
     let r = await call('POST', '/api/jobs/J-1001/assign', { driverId: 'd2' });
     assert.strictEqual(r.status, 409, '免許不足は拒否されること');
     await ok('POST', '/api/jobs/J-1001/assign', { driverId: 'd1' });
     await ok('POST', '/api/jobs/J-1001/respond', { accept: true });
+
+    // 配車候補の判定: 同じ積地・近い届け先で余裕積載がある案件は積み合わせ可能、荷台違いは不可
+    s = await ok('GET', '/api/bootstrap');
+    const cand = (jobId, dId) => s.jobs.find((x) => x.id === jobId).candidates.find((c) => c.driverId === dId);
+    assert.strictEqual(cand('J-1004', 'd1').mode, 'combine', '積み合わせ可能と判定されること');
+    assert.ok(cand('J-1003', 'd1').items.some((i) => i.level === 'error'), '冷凍案件に非冷凍車は不可');
+    assert.strictEqual(cand('J-1003', 'd3').mode, 'idle');
+    assert.ok(!cand('J-1003', 'd3').items.some((i) => i.level === 'error'));
+    assert.ok(s.trucks.t10 && s.bodies.reefer);
 
     // 出発 -> 到着(位置で自動検知) -> 受付 -> 呼び出し -> 作業 -> 完了
     await ok('POST', '/api/jobs/J-1001/stops/0/depart', { by: 'driver' });

@@ -69,7 +69,7 @@
     const tl = j.timeline.slice(-6).reverse().map((e) => `<li>${fmtTime(e.ts)} <b>${esc(e.text)}</b></li>`).join('');
     return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
       <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
-      <div class="small muted">${esc(j.cargo)}／${{ large: '大型', medium: '中型', small: '普通' }[j.vehicleClass]}車</div>
+      <div class="small muted">${esc(j.cargo)}／${esc(data.trucks[j.truckType].label)} ${esc(data.bodies[j.body])}・${j.pallets}枚</div>
       <div style="margin:6px 0">${d ? `🚚 ${esc(d.name)}（${esc(d.vehicle)}）${lang ? lang.flag + ' ' + esc(lang.label) : ''}` : '<span class="muted">ドライバー調整中</span>'}</div>
       <div class="stops">${stops}</div>${troubles}${actions}
       <details style="margin-top:6px"><summary class="small muted">履歴</summary><ul class="timeline">${tl || '<li>なし</li>'}</ul></details></div>`;
@@ -87,9 +87,11 @@
       <label class="f">届け先（荷降ろし）<select name="dropoffSiteId">${siteOptions('s3')}</select></label></div>
       <div class="grid2"><div><b class="small">積込みの作業</b>${workChecks('pickupWork', ['w_forklift_load'])}</div>
       <div><b class="small">荷降ろしの作業</b>${workChecks('dropoffWork', ['w_forklift_unload'])}</div></div>
-      <div class="grid3"><label class="f">到着希望日時<input type="datetime-local" name="windowStart" value="${local}" required></label>
-      <label class="f">車格<select name="vehicleClass"><option value="large">大型</option><option value="medium">中型</option><option value="small">普通</option></select></label>
-      <label class="f">荷物の内容<input name="cargo" placeholder="例: 食品 パレット10枚" required></label></div>
+       <div class="grid3"><label class="f">到着希望日時<input type="datetime-local" name="windowStart" value="${local}" required></label>
+      <label class="f">荷物の内容<input name="cargo" placeholder="例: 食品 パレット10枚" required></label>
+      <label class="f">パレット数（11型換算）<input type="number" name="pallets" min="1" max="24" value="8" required></label></div>
+      <div class="grid3"><label class="f">トラックの車格<select name="truckType">${Object.keys(data.trucks).map((k) => `<option value="${k}" ${k === 't10' ? 'selected' : ''}>${esc(data.trucks[k].label)}（最大${data.trucks[k].pallets}枚）</option>`).join('')}</select></label>
+      <label class="f">荷台の種類<select name="body">${Object.keys(data.bodies).map((k) => `<option value="${k}">${esc(data.bodies[k])}</option>`).join('')}</select></label><div></div></div>
       <button class="btn primary" type="submit">依頼を登録</button> <span id="newmsg" class="small"></span></form>`;
   }
 
@@ -135,7 +137,7 @@
     if (fn) fn.onsubmit = (e) => {
       e.preventDefault();
       const f = new FormData(fn), g = (n) => f.getAll(n);
-      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), vehicleClass: f.get('vehicleClass'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork') };
+      const body = { shipperId, pickupSiteId: f.get('pickupSiteId'), dropoffSiteId: f.get('dropoffSiteId'), windowStart: f.get('windowStart'), truckType: f.get('truckType'), body: f.get('body'), pallets: f.get('pallets'), cargo: f.get('cargo'), pickupWork: g('pickupWork'), dropoffWork: g('dropoffWork') };
       act(async () => { await api('POST', '/api/jobs', body); tab = 'jobs'; $('view').innerHTML = ''; }, $('newmsg'));
     };
     const fs = $('f_site');

@@ -16,19 +16,6 @@
 
   async function load() { data = await api('GET', '/api/bootstrap'); render(); }
 
-  // 配車チェック（サーバーのcheckAssignと同じ基準。ここでは表示用に即時計算）
-  function checks(d, j) {
-    const out = [];
-    if (LIC[d.license] < LIC[j.vehicleClass]) out.push({ level: 'error', msg: `免許区分が不足（${LIC_JA[d.license]}免許では${LIC_JA[j.vehicleClass]}車は不可）` });
-    const days = (new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5;
-    if (days < 0) out.push({ level: 'error', msg: '在留期限が切れています' });
-    else if (days < 90) out.push({ level: 'warn', msg: `在留期限が近い（残り${Math.ceil(days)}日）` });
-    if (d.dutyHours > 13) out.push({ level: 'warn', msg: `本日の拘束${d.dutyHours}h（目安13h）` });
-    const other = data.jobs.find((x) => x.id !== j.id && x.driverId === d.id && ['offered', 'accepted', 'inprogress'].includes(x.state));
-    if (other) out.push({ level: 'warn', msg: `別案件 ${other.id} を担当中` });
-    return out;
-  }
-
   function render() {
     $('clock').textContent = new Date().toLocaleString('ja-JP');
     renderAlerts(); renderBoard(); renderDrivers(); renderMap();
@@ -78,19 +65,25 @@
       const stops = j.stops.map((s, i) => `${i ? ' → ' : ''}${esc(site(s.siteId).name)}${s.stage !== 'pending' ? `<span class="tag ${s.stage === 'done' ? 'done' : 'inprogress'}">${STAGE_JA[s.stage]}</span>` : ''}`).join('');
       let assign = '';
       if (j.state === 'open' || j.state === 'offered') {
+        const cands = j.candidates || [];
+        const cOf = (id) => cands.find((c) => c.driverId === id);
+        const best = cands.find((c) => !c.items.some((i) => i.level === 'error'));
         const sel = keep[j.id] || (j.driverId || '');
-        const chk = sel ? checks(drv(sel), j) : [];
-        const hasErr = chk.some((c) => c.level === 'error');
-        assign = `<div class="row wrap" style="margin-top:6px"><select data-sel="${j.id}"><option value="">ドライバーを選択…</option>${data.drivers.map((x) => {
-          const c = checks(x, j); const e = c.some((y) => y.level === 'error'), w = c.some((y) => y.level === 'warn');
-          return `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${flag(x)} ${esc(x.name)}（${esc(x.vehicle)}）${e ? ' ✕不可' : w ? ' ⚠要確認' : ' ◎'}</option>`;
-        }).join('')}</select>
+        const cs = sel ? cOf(sel) : null;
+        const hasErr = cs && cs.items.some((i) => i.level === 'error');
+        const tagOf = (c) => c.items.some((i) => i.level === 'error') ? '✕不可' : c.mode === 'combine' ? '＋積合せ可' : c.mode === 'sequential' ? '→連続配車' : '◎空車';
+        const col = { error: 'var(--crit)', warn: 'var(--warn)', info: 'var(--brand)' }, mark = { error: '✕', warn: '⚠', info: 'ℹ' };
+        assign = `${best ? `<div class="small" style="margin-top:6px">おすすめ: <b>${esc(drv(best.driverId).name)}</b>（${best.mode === 'combine' ? '走行中の車両に積み合わせ' : best.mode === 'sequential' ? '現案件の完了後に連続配車' : '待機中の空車'}）</div>` : '<div class="small" style="margin-top:6px;color:var(--crit)">条件に合うドライバーがいません</div>'}
+          <div class="row wrap" style="margin-top:6px"><select data-sel="${j.id}"><option value="">ドライバーを選択…</option>${cands.map((c) => {
+            const x = drv(c.driverId);
+            return `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${flag(x)} ${esc(x.name)}（${esc(x.vehicle)}）${tagOf(c)}</option>`;
+          }).join('')}</select>
           <button class="btn primary" data-assign="${j.id}" ${sel && !hasErr ? '' : 'disabled'}>${j.state === 'offered' ? '再割当' : '割り当てて打診'}</button></div>
-          ${chk.map((c) => `<div class="small" style="color:${c.level === 'error' ? 'var(--crit)' : 'var(--warn)'}">${c.level === 'error' ? '✕' : '⚠'} ${esc(c.msg)}</div>`).join('')}`;
+          ${(cs ? cs.items : []).map((c) => `<div class="small" style="color:${col[c.level]}">${mark[c.level]} ${esc(c.msg)}</div>`).join('')}`;
       }
       return `<div class="card"><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
-        <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}／${LIC_JA[j.vehicleClass]}車</span></div>
-        <div class="small" style="margin:4px 0">${stops}</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
+        <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
+        <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
     document.querySelectorAll('[data-sel]').forEach((s) => { s.onchange = () => { keep[s.dataset.sel] = s.value; renderBoard(); }; });
     document.querySelectorAll('[data-assign]').forEach((b) => { b.onclick = () => act(() => api('POST', `/api/jobs/${b.dataset.assign}/assign`, { driverId: keep[b.dataset.assign] })); });
@@ -101,7 +94,7 @@
     $('drivers').innerHTML = '<table><tr><th>ドライバー</th><th>言語</th><th>車両・免許</th><th>在留期限</th><th>本日の拘束</th><th>状況</th></tr>' + data.drivers.map((d) => {
       const days = Math.ceil((new Date(d.residenceExpiry).getTime() - Date.now()) / 864e5);
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
-      return `<tr><td><b>${esc(d.name)}</b></td><td>${flag(d)} ${esc((LANGS.find((l) => l.code === d.lang) || {}).label || '')}</td><td>${esc(d.vehicle)}／${LIC_JA[d.license]}免許</td>
+      return `<tr><td><b>${esc(d.name)}</b></td><td>${flag(d)} ${esc((LANGS.find((l) => l.code === d.lang) || {}).label || '')}</td><td>${esc(d.vehicle)}<br><span class="small muted">${LIC_JA[d.license]}免許／最大${data.trucks[d.vehicleSpec.type].pallets}枚</span></td>
         <td>${esc(d.residenceExpiry)} ${days < 90 ? `<span class="tag warn">残り${days}日</span>` : ''}</td>
         <td>${d.dutyHours}h ${d.dutyHours > 13 ? '<span class="tag crit">超過</span>' : ''}</td>
         <td>${job ? `${job.id} ${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}` : '<span class="muted">待機</span>'}</td></tr>`;
