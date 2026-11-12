@@ -32,19 +32,19 @@
       j.messages.filter((m) => m.kind === 'trouble' && !m.resolved).forEach((m) => {
         const d = drv(j.driverId);
         const crit = m.key === 't_sos' || m.key === 't_accident' || m.key === 't_sick';
-        items.push({ level: crit ? 'crit' : 'warn', order: crit ? 0 : 1, html: `<span>${icon(m.key)} <b>${esc(j.id)} ${esc(d ? d.name : '')}: ${esc(ja(m.key))}</b> <span class="small">${fmtTime(m.ts)}</span></span>
+        items.push({ job: j.id, level: crit ? 'crit' : 'warn', order: crit ? 0 : 1, html: `<span>${icon(m.key)} <b>${esc(j.id)} ${esc(d ? d.name : '')}: ${esc(ja(m.key))}</b> <span class="small">${fmtTime(m.ts)}</span></span>
           <span>${GROUPS.reply.map((k) => `<button class="btn" data-reply="${j.id}" data-key="${k}" data-mid="${m.id}">${icon(k)} ${esc(ja(k))}</button>`).join(' ')}
           <button class="btn" data-resolve="${j.id}" data-mid="${m.id}">対応済み</button></span>` });
       });
       if (j.state === 'inprogress' && j.eta != null && Date.now() + j.eta * 60000 > new Date(j.windowEnd).getTime()) {
-        items.push({ level: 'warn', order: 2, html: `<span>⏰ <b>${esc(j.id)}</b> 到着予定が希望時間（${fmtTime(j.windowEnd)}）を超過する見込みです（到着まで約${j.eta}分）</span>` });
+        items.push({ job: j.id, level: 'warn', order: 2, html: `<span>⏰ <b>${esc(j.id)}</b> 到着予定が希望時間（${fmtTime(j.windowEnd)}）を超過する見込みです（到着まで約${j.eta}分）</span>` });
       }
       const s = j.activeStop >= 0 && j.stops[j.activeStop];
       if (s && s.stage === 'checkedin' && Date.now() - new Date(s.checkedinAt).getTime() > 20 * 60000) {
-        items.push({ level: 'warn', order: 2, html: `<span>⏳ <b>${esc(j.id)}</b> ${esc(site(s.siteId).name)} で受付後20分以上待機しています</span>` });
+        items.push({ job: j.id, level: 'warn', order: 2, html: `<span>⏳ <b>${esc(j.id)}</b> ${esc(site(s.siteId).name)} で受付後20分以上待機しています</span>` });
       }
       if (j.state === 'open' && new Date(j.windowStart).getTime() - Date.now() < 2 * 3600e3) {
-        items.push({ level: 'warn', order: 3, html: `<span>🚨 <b>${esc(j.id)}</b> 未割当（希望 ${fmtTime(j.windowStart)}）。早めに配車してください</span>` });
+        items.push({ job: j.id, level: 'warn', order: 3, html: `<span>🚨 <b>${esc(j.id)}</b> 未割当（希望 ${fmtTime(j.windowStart)}）。早めに配車してください</span>` });
       }
     });
     data.drivers.forEach((d) => {
@@ -59,14 +59,28 @@
     const first = items.length ? (tmp.querySelector('span') || tmp).textContent.trim() : '';
     $('alerts').innerHTML = items.length
       ? `<div class="alertbar ${worst}" data-alerts-toggle><b class="cnt">⚠ ${items.length}件</b><span class="small">${cnt.crit ? `重大${cnt.crit} ` : ''}${cnt.warn ? `注意${cnt.warn} ` : ''}${cnt.info ? `情報${cnt.info}` : ''}</span><span class="txt">${esc(first)}</span><span>${alertsOpen ? '▲ 閉じる' : '▼ 一覧'}</span></div>
-         <div class="alertpanel ${alertsOpen ? '' : 'hidden'}">${items.map((i) => `<div class="alert ${i.level}">${i.html}</div>`).join('')}</div>`
+         <div class="alertpanel ${alertsOpen ? '' : 'hidden'}">${items.map((i) => `<div class="alert ${i.level} ${i.job ? 'jump' : ''}"${i.job ? ` data-jump="${i.job}" title="クリックで案件ボードと地図に表示"` : ''}>${i.html}</div>`).join('')}</div>`
       : '<div class="alertbar info"><b class="cnt">✅ アラートなし</b></div>';
+    document.querySelectorAll('.alert[data-jump]').forEach((el) => {
+      el.onclick = (e) => { if (e.target.closest('button')) return; jumpToJob(el.dataset.jump); };
+    });
     const tg = document.querySelector('[data-alerts-toggle]');
     if (tg) tg.onclick = (e) => { if (e.target.closest('button')) return; alertsOpen = !alertsOpen; renderAlerts(); };
     document.querySelectorAll('[data-reply]').forEach((b) => {
       b.onclick = () => act(async () => { await api('POST', `/api/jobs/${b.dataset.reply}/messages`, { from: 'desk', key: b.dataset.key }); await api('POST', `/api/jobs/${b.dataset.reply}/messages/${b.dataset.mid}/resolve`, {}); });
     });
     document.querySelectorAll('[data-resolve]').forEach((b) => { b.onclick = () => act(() => api('POST', `/api/jobs/${b.dataset.resolve}/messages/${b.dataset.mid}/resolve`, {})); });
+  }
+
+  // アラートの案件をクリック → 案件ボードで選択・スクロールし、地図にルートを表示
+  function jumpToJob(id) {
+    selectedJob = id; alertsOpen = false;
+    renderAlerts(); renderBoard(); renderMap(); drawRoute(true);
+    const card = document.querySelector(`.job-card[data-job="${id}"]`), bd = $('board');
+    if (card) {
+      bd.scrollTop = Math.max(0, card.offsetTop - 48);
+      card.classList.add('flash'); setTimeout(() => card.classList.remove('flash'), 1600);
+    }
   }
 
   // ---------------- 配車ボード
