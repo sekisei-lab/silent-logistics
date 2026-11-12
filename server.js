@@ -60,11 +60,12 @@ function seed() {
   const mkStop = (type, siteId, work, wh) => ({ type, siteId, warehouse: Object.assign({ forklift: true, helper: false, inspection: false }, wh), stage: 'pending', berth: null, checkinNo: null, arrivedAt: null, checkedinAt: null, calledAt: null, startedAt: null, doneAt: null, work, workRequests: [], photo: false });
   const jobs = [
     { id: 'J-1001', shipperId: 'c1', truckType: 't10', cargo: '食品 パレット12枚', pallets: 12, body: 'wing', windowStart: h(1.5), windowEnd: h(2.5), driverId: null, state: 'open', createdAt: h(-1), timeline: [], messages: [], stops: [mkStop('pickup', 's1', ['w_wing_open']), mkStop('dropoff', 's3', ['w_pallet_swap'])] },
-    { id: 'J-1002', shipperId: 'c2', truckType: 't4', pallets: 4, body: 'van', tailLift: true, cargo: '家電 箱 40個（約4パレット換算）', windowStart: h(3), windowEnd: h(4), driverId: 'd2', state: 'offered', createdAt: h(-1), timeline: [], messages: [], stops: [mkStop('pickup', 's4', ['w_manual_load', 'w_seal_check'], { forklift: false, helper: true }), mkStop('dropoff', 's5', ['w_manual_unload', 'w_tail_lift'], { forklift: false, inspection: true })] },
+    { id: 'J-1002', shipperId: 'c2', truckType: 't4', pallets: 4, body: 'van', tailLift: true, cargo: '家電 箱 40個（約4パレット換算）', windowStart: h(3), windowEnd: h(4), driverId: null, state: 'offered', offers: [{ driverId: 'd2', ts: h(-0.3), status: 'pending', nudges: 0, lastNudge: null }], createdAt: h(-1), timeline: [], messages: [], stops: [mkStop('pickup', 's4', ['w_manual_load', 'w_seal_check'], { forklift: false, helper: true }), mkStop('dropoff', 's5', ['w_manual_unload', 'w_tail_lift'], { forklift: false, inspection: true })] },
     { id: 'J-1003', shipperId: 'c3', truckType: 't10', pallets: 8, body: 'reefer', cargo: '冷凍品 パレット8枚', windowStart: h(5), windowEnd: h(6), driverId: null, state: 'open', createdAt: h(-0.5), timeline: [], messages: [], stops: [mkStop('pickup', 's2', []), mkStop('dropoff', 's1', [])] },
     { id: 'J-1005', shipperId: 'c3', truckType: 'keitora', pallets: 1, body: 'flat', sameDay: true, cargo: '建材 小口 3点（当日便）', windowStart: h(0.4), windowEnd: h(1.4), driverId: null, state: 'open', createdAt: h(-0.1), timeline: [], messages: [], stops: [mkStop('pickup', 's1', ['w_manual_load'], { forklift: false }), mkStop('dropoff', 's2', ['w_manual_unload'], { forklift: false })] },
     { id: 'J-1004', shipperId: 'c1', truckType: 't10', pallets: 4, body: 'van', cargo: '日用品 パレット4枚', windowStart: h(2), windowEnd: h(3), driverId: null, state: 'open', createdAt: h(-0.2), timeline: [], messages: [], stops: [mkStop('pickup', 's1', []), mkStop('dropoff', 's3', [])] },
   ];
+  jobs.forEach((j) => { j.offers = j.offers || []; });
   return { sites, drivers, shippers, jobs };
 }
 
@@ -300,7 +301,7 @@ route('POST', '/api/jobs', (p, b) => {
   const j = {
     id: 'J-' + (1001 + db.jobs.length + Math.floor(Math.random() * 900)), shipperId: b.shipperId, truckType: TRUCKS[b.truckType] ? b.truckType : 't10', body: BODIES[b.body] ? b.body : 'van', tailLift: !!b.tailLift, sameDay: !!b.sameDay, pallets: Math.max(1, Number(b.pallets) || 1),
     cargo: String(b.cargo || ''), windowStart: start.toISOString(), windowEnd: new Date(start.getTime() + 3600e3).toISOString(),
-    driverId: null, state: 'open', createdAt: new Date().toISOString(), timeline: [], messages: [],
+    driverId: null, offers: [], state: 'open', createdAt: new Date().toISOString(), timeline: [], messages: [],
     stops: [st('pickup', b.pickupSiteId, b.pickupWork, b.pickupWh), st('dropoff', b.dropoffSiteId, b.dropoffWork, b.dropoffWh)],
   };
   event(j, '輸送依頼を登録', 'shipper');
@@ -313,23 +314,56 @@ route('GET', '/api/jobs/:id/check', (p, b, q) => {
   return checkAssign(d, j);
 });
 
+// 打診: 1つの案件に複数のトラックへ同時に打診できる（最初に受諾したトラックが担当になる）
 route('POST', '/api/jobs/:id/assign', (p, b) => {
   const j = job(p.id), d = driver(b.driverId);
   if (!j || !d) throw httpErr(404, '見つかりません');
   if (!['open', 'offered'].includes(j.state)) throw httpErr(409, 'この案件は割当できません');
   const errs = checkAssign(d, j).filter((c) => c.level === 'error');
   if (errs.length) throw httpErr(409, errs.map((e) => e.msg).join(' / '));
-  j.driverId = d.id; j.state = 'offered';
-  event(j, `${d.name}に案件を提示`, 'desk');
+  j.offers = j.offers || [];
+  const ex = j.offers.find((o) => o.driverId === d.id);
+  if (ex && ex.status === 'pending') throw httpErr(409, `${d.name}にはすでに打診中です`);
+  const now = new Date().toISOString();
+  if (ex) Object.assign(ex, { status: 'pending', ts: now, nudges: 0, lastNudge: null });
+  else j.offers.push({ driverId: d.id, ts: now, status: 'pending', nudges: 0, lastNudge: null });
+  j.state = 'offered';
+  event(j, `${d.name}に案件を打診`, 'desk');
   broadcast(); return view(j);
 });
 
 route('POST', '/api/jobs/:id/respond', (p, b) => {
   const j = job(p.id);
   if (!j || j.state !== 'offered') throw httpErr(409, '回答できません');
-  const d = driver(j.driverId);
-  if (b.accept) { j.state = 'accepted'; event(j, `${d.name}が受諾`, 'driver'); }
-  else { event(j, `${d.name}が辞退`, 'driver'); j.driverId = null; j.state = 'open'; }
+  const o = (j.offers || []).find((x) => x.driverId === b.driverId && x.status === 'pending');
+  if (!o) throw httpErr(409, 'この案件への打診がありません');
+  const d = driver(o.driverId);
+  if (b.accept) {
+    o.status = 'accepted'; j.driverId = o.driverId; j.state = 'accepted';
+    j.offers.forEach((x) => { if (x !== o && x.status === 'pending') x.status = 'cancelled'; });
+    event(j, `${d.name}が受諾`, 'driver');
+  } else {
+    o.status = 'declined'; event(j, `${d.name}が辞退`, 'driver');
+    if (!j.offers.some((x) => x.status === 'pending')) j.state = 'open';
+  }
+  broadcast(); return view(j);
+});
+
+// 打診中のトラックへ回答の催促（ドライバーに母国語で通知）
+route('POST', '/api/jobs/:id/offers/:driverId/nudge', (p) => {
+  const j = job(p.id), o = j && (j.offers || []).find((x) => x.driverId === p.driverId && x.status === 'pending');
+  if (!o) throw httpErr(409, '打診中ではありません');
+  o.nudges += 1; o.lastNudge = new Date().toISOString();
+  const m = message(j, 'desk', 'nudge', 'm_nudge'); m.to = o.driverId;
+  event(j, `${driver(o.driverId).name}に回答を催促（${o.nudges}回目）`, 'desk');
+  broadcast(); return view(j);
+});
+
+route('POST', '/api/jobs/:id/offers/:driverId/withdraw', (p) => {
+  const j = job(p.id), o = j && (j.offers || []).find((x) => x.driverId === p.driverId && x.status === 'pending');
+  if (!o) throw httpErr(409, '打診中ではありません');
+  o.status = 'withdrawn'; event(j, `${driver(o.driverId).name}への打診を取り下げ`, 'desk');
+  if (!j.offers.some((x) => x.status === 'pending')) j.state = 'open';
   broadcast(); return view(j);
 });
 

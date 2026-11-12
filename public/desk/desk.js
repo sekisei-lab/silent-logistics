@@ -5,6 +5,7 @@
   const ja = (k, p) => tr(k, 'ja', p);
   let data = null, map = null, siteLayer = null;
   const markers = {};
+  const nudgeSel = {}; // 催促・取り下げ用に選択したトラック { jobId: Set(driverId) }
   let dragging = null, pendingBoard = false; // 地図の車両マーカーをドラッグして配車する
   const STAGE_JA = { pending: '待機', enroute: '移動中', arrived: '到着', checkedin: '受付済み', called: '呼び出し中', working: '作業中', done: '完了' };
   const STATE_JA = { open: '未割当', offered: '打診中', accepted: '受諾済み', inprogress: '運行中', done: '完了' };
@@ -67,17 +68,48 @@
       let assign = '', dropAttr = '';
       if (j.state === 'open' || j.state === 'offered') {
         dropAttr = ` data-drop="${j.id}"`;
-        const cands = j.candidates || [];
-        const best = cands.find((c) => !c.items.some((i) => i.level === 'error'));
-        const tagOf = (c) => c.items.some((i) => i.level === 'error') ? '✕不可' : c.mode === 'combine' ? '＋積合せ可' : c.mode === 'sequential' ? '→連続配車' : '◎空車';
-        assign = `${best ? `<div class="small" style="margin-top:6px">おすすめ: <b>${esc(drv(best.driverId).name)}</b>（${best.mode === 'combine' ? '走行中の車両に積み合わせ' : best.mode === 'sequential' ? '現案件の完了後に連続配車' : '待機中の空車'}）</div>` : '<div class="small" style="margin-top:6px;color:var(--crit)">条件に合うドライバーがいません</div>'}
-          <div class="small muted" style="margin-top:4px">${cands.map((c) => `${flag(drv(c.driverId))} ${esc(shortName(drv(c.driverId)))} ${tagOf(c)}`).join('　')}</div>
-          <div class="drop-hint">🚚 地図の緑の車両マーカーをここへドラッグして${j.state === 'offered' ? '再割当' : '配車'}</div>`;
+        const offers = j.offers || [], pend = offers.filter((o) => o.status === 'pending');
+        const selSet = nudgeSel[j.id] || (nudgeSel[j.id] = new Set());
+        pend.forEach(() => {}); [...selSet].forEach((id) => { if (!pend.some((o) => o.driverId === id)) selSet.delete(id); });
+        const done = { declined: '辞退', cancelled: '他が受諾', withdrawn: '取下げ', accepted: '受諾' };
+        assign = (offers.length ? `<div class="offers">${offers.map((o) => {
+          const x = drv(o.driverId);
+          if (o.status === 'pending') {
+            const mins = Math.max(0, Math.round((Date.now() - new Date(o.ts).getTime()) / 60000));
+            return `<label class="offer-chip"><input type="checkbox" data-nsel="${j.id}" value="${o.driverId}" ${selSet.has(o.driverId) ? 'checked' : ''}> 🚚 ${esc(shortName(x))} <span class="small">打診中・${mins}分${o.nudges ? `・催促${o.nudges}回` : ''}</span></label>`;
+          }
+          return `<span class="offer-chip done">${esc(shortName(x))} ${done[o.status] || o.status}</span>`;
+        }).join('')}</div>` : '') +
+          (pend.length ? `<div class="row wrap" style="margin-top:6px"><span class="small muted">打診中 ${pend.length}台</span>
+            <button class="btn" data-nall="${j.id}">全て選択</button>
+            <button class="btn primary" data-nudge="${j.id}" ${selSet.size ? '' : 'disabled'}>⏰ 選択したトラックに催促（${selSet.size}）</button>
+            <button class="btn" data-withdraw="${j.id}" ${selSet.size ? '' : 'disabled'}>打診を取り下げ</button></div>` : '') +
+          `<div class="drop-hint">🚚 地図の緑の車両マーカーをここへドラッグして打診${pend.length ? '（複数台に打診できます）' : ''}</div>`;
       }
       return `<div class="card"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
         <div class="small" style="margin:4px 0">${stops}</div><div class="small">必要車両: <b>${esc(data.trucks[j.truckType].label)}・${esc(data.bodies[j.body])}</b>・${j.pallets}枚${j.sameDay ? ' <span class="tag warn">⚡当日便</span>' : ''}</div><div class="small muted">${esc(j.cargo)}${d ? `／${flag(d)} ${esc(d.name)}` : ''}${j.eta != null ? `／到着まで約${j.eta}分` : ''}</div>${assign}</div>`;
     }).join('');
+    document.querySelectorAll('[data-nsel]').forEach((c) => {
+      c.onchange = () => { const set = nudgeSel[c.dataset.nsel] || (nudgeSel[c.dataset.nsel] = new Set()); if (c.checked) set.add(c.value); else set.delete(c.value); renderBoard(); };
+    });
+    document.querySelectorAll('[data-nall]').forEach((b) => {
+      b.onclick = () => { const j = data.jobs.find((x) => x.id === b.dataset.nall); nudgeSel[j.id] = new Set((j.offers || []).filter((o) => o.status === 'pending').map((o) => o.driverId)); renderBoard(); };
+    });
+    document.querySelectorAll('[data-nudge]').forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.nudge, ids = [...(nudgeSel[id] || [])];
+        try { for (const dId of ids) await api('POST', `/api/jobs/${id}/offers/${dId}/nudge`, {}); notify(`${ids.length}台に回答を催促しました`); nudgeSel[id] = new Set(); } catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+        await load();
+      };
+    });
+    document.querySelectorAll('[data-withdraw]').forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.withdraw, ids = [...(nudgeSel[id] || [])];
+        try { for (const dId of ids) await api('POST', `/api/jobs/${id}/offers/${dId}/withdraw`, {}); notify(`${ids.length}台への打診を取り下げました`); nudgeSel[id] = new Set(); } catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+        await load();
+      };
+    });
   }
 
   // ---------------- ドライバー
@@ -106,8 +138,9 @@
     data.drivers.forEach((d) => {
       const job = d.activeJobId && data.jobs.find((j) => j.id === d.activeJobId);
       const html = `<b>${esc(d.name)}</b><br>${esc(d.vehicle)}${job ? `<br>${job.id}（${STAGE_JA[job.stops[Math.max(job.activeStop, 0)].stage] || ''}）${job.eta != null ? `／約${job.eta}分` : ''}` : '<br>待機'}<br><span class="small">案件カードへドラッグして配車</span>`;
-      const key = (job ? 'busy:' : 'idle:') + d.name;
-      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job), iconSize: [48, 58], iconAnchor: [24, 22] });
+      const offered = data.jobs.some((x) => x.state === 'offered' && (x.offers || []).some((o) => o.driverId === d.id && o.status === 'pending'));
+      const key = (job ? 'busy:' : 'idle:') + (offered ? 'off:' : '') + d.name;
+      const ic = L.divIcon({ className: 'veh-icon', html: vehHtml(d, !!job, offered), iconSize: [48, 72], iconAnchor: [24, 22] });
       const cur = markers[d.id];
       if (!cur) {
         const m = L.marker([d.lat, d.lng], { icon: ic, zIndexOffset: 1000 }).bindPopup(html).addTo(map);
@@ -122,8 +155,8 @@
 
   // ---------------- 車両マーカー（緑）をドラッグして案件カードへドロップ = 配車
   const shortName = (d) => d.name.replace(/（.*）/, '');
-  function vehHtml(d, busy) {
-    return `<div class="veh ${busy ? 'busy' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div></div>`;
+  function vehHtml(d, busy, offered) {
+    return `<div class="veh ${busy ? 'busy' : ''} ${offered ? 'offered' : ''}"><div class="veh-badge"><svg viewBox="0 0 48 28" width="30" height="18" aria-hidden="true"><rect x="1" y="2" width="29" height="18" rx="2" fill="#0a1c3c"/><path d="M32 8h8l6 7v5H32z" fill="#0a1c3c"/><circle cx="11" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/><circle cx="37" cy="22" r="4.5" fill="#0a1c3c" stroke="#8ee37f" stroke-width="1.5"/></svg></div><div class="veh-name">${esc(shortName(d))}</div>${offered ? '<div class="veh-flag">打診中</div>' : ''}</div>`;
   }
   function notify(text, level) {
     const el = $('dtoast'); el.textContent = text; el.style.background = level === 'crit' ? 'var(--crit)' : ''; el.style.color = level === 'crit' ? '#3a0606' : '';

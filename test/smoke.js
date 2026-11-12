@@ -20,7 +20,7 @@ server.listen(0, async () => {
     let r = await call('POST', '/api/jobs/J-1001/assign', { driverId: 'd2' });
     assert.strictEqual(r.status, 409, '免許不足は拒否されること');
     await ok('POST', '/api/jobs/J-1001/assign', { driverId: 'd1' });
-    await ok('POST', '/api/jobs/J-1001/respond', { accept: true });
+    await ok('POST', '/api/jobs/J-1001/respond', { accept: true, driverId: 'd1' });
 
     // 配車候補の判定: 同じ積地・近い届け先で余裕積載がある案件は積み合わせ可能、荷台違いは不可
     s = await ok('GET', '/api/bootstrap');
@@ -71,6 +71,24 @@ server.listen(0, async () => {
     assert.strictEqual(j.state, 'done');
     const trouble = j.messages.find((m) => m.kind === 'trouble');
     await ok('POST', `/api/jobs/J-1001/messages/${trouble.id}/resolve`, {});
+
+    // 複数トラックへ同時に打診 → 催促 → 1台が受諾すると他は自動で取り消し
+    await ok('POST', '/api/jobs/J-1004/assign', { driverId: 'd1' });
+    await ok('POST', '/api/jobs/J-1004/assign', { driverId: 'd3' });
+    r = await call('POST', '/api/jobs/J-1004/assign', { driverId: 'd3' });
+    assert.strictEqual(r.status, 409, '同じトラックへの二重打診は拒否');
+    await ok('POST', '/api/jobs/J-1004/offers/d3/nudge', {});
+    let j4 = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === 'J-1004');
+    assert.strictEqual(j4.offers.filter((o) => o.status === 'pending').length, 2);
+    assert.strictEqual(j4.offers.find((o) => o.driverId === 'd3').nudges, 1);
+    const nm = j4.messages.find((m) => m.kind === 'nudge');
+    assert.ok(nm && nm.to === 'd3', '催促は対象ドライバー宛て');
+    await ok('POST', '/api/jobs/J-1004/offers/d1/withdraw', {});
+    await ok('POST', '/api/jobs/J-1004/assign', { driverId: 'd1' });
+    await ok('POST', '/api/jobs/J-1004/respond', { accept: true, driverId: 'd3' });
+    j4 = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === 'J-1004');
+    assert.strictEqual(j4.driverId, 'd3'); assert.strictEqual(j4.state, 'accepted');
+    assert.strictEqual(j4.offers.find((o) => o.driverId === 'd1').status, 'cancelled', '他の打診は自動取消');
 
     // 新規依頼・拠点登録・定型文以外の拒否
     const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [], pickupWh: { forklift: false, helper: true }, dropoffWh: { forklift: true, inspection: true }, tailLift: true, body: 'wing' });

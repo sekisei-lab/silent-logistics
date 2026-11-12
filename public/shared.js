@@ -102,10 +102,12 @@
     m_stay: ['🛑', 'その場で待機してください', 'Stay where you are', 'Hãy chờ tại chỗ', 'Tetap di tempat'],
     m_cancel: ['⛔', 'この案件はキャンセルです', 'This job is cancelled', 'Chuyến này đã bị hủy', 'Pekerjaan ini dibatalkan'],
     m_call_berth: ['📣', 'バース {berth} に進んでください', 'Go to berth {berth}', 'Hãy đến cửa số {berth}', 'Silakan menuju dok {berth}'],
+    m_nudge: ['⏰', '打診への回答をお願いします', 'Please reply to the job offer', 'Vui lòng trả lời đề nghị', 'Mohon balas tawaran pekerjaan'],
     m_work_request: ['🛠️', '作業をお願いします', 'Please do this work', 'Vui lòng thực hiện công việc này', 'Mohon lakukan pekerjaan ini'],
   };
 
   const ZH = {
+  "m_nudge": "请尽快回复该任务邀请",
   "h_forklift_yes": "仓库方用叉车装卸",
   "h_forklift_no": "没有叉车（人工装卸）",
   "h_helper_yes": "装卸人员会协助",

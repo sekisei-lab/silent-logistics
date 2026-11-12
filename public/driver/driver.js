@@ -14,7 +14,8 @@
   const T = (k, p) => tr(k, lang, p);
   const me = () => data && data.drivers.find((d) => d.id === meId);
   const siteOf = (id) => data.sites.find((s) => s.id === id);
-  const jobs = () => data.jobs.filter((j) => j.driverId === meId);
+  const hasOffer = (j) => j.state === 'offered' && (j.offers || []).some((o) => o.driverId === meId && o.status === 'pending');
+  const jobs = () => data.jobs.filter((j) => j.driverId === meId || hasOffer(j));
 
   function toast(text) {
     const el = $('toast'); el.textContent = text; el.classList.remove('hidden');
@@ -50,7 +51,7 @@
 
   function allMessages() {
     const out = [];
-    jobs().forEach((j) => j.messages.forEach((m) => { if (m.from !== 'driver') out.push(Object.assign({ jobId: j.id }, m)); }));
+    jobs().forEach((j) => j.messages.forEach((m) => { if (m.from !== 'driver' && (!m.to || m.to === meId)) out.push(Object.assign({ jobId: j.id }, m)); }));
     return out.sort((a, b) => b.ts.localeCompare(a.ts));
   }
   function unreadCount() { return allMessages().filter((m) => !seenMsgs[m.id]).length; }
@@ -104,8 +105,8 @@
 
   function viewMain() {
     const mine = jobs();
-    const offers = mine.filter((j) => j.state === 'offered');
-    const active = mine.find((j) => j.state === 'accepted' || j.state === 'inprogress');
+    const offers = mine.filter(hasOffer);
+    const active = mine.find((j) => j.driverId === meId && (j.state === 'accepted' || j.state === 'inprogress'));
     let html = '';
     offers.forEach((j) => { html += offerCard(j); });
     if (active) html += activeCard(active);
@@ -128,7 +129,9 @@
 
   function offerCard(j) {
     const p = j.stops[0], d = j.stops[1];
-    return `<div class="card"><span class="stage-chip">${icon('ui_jobs_new')} ${esc(T('ui_jobs_new'))}</span>
+    const my = (j.offers || []).find((o) => o.driverId === meId && o.status === 'pending');
+    const nudge = my && my.nudges ? `<div class="stage-chip" style="color:var(--warn);margin-left:6px">${icon('m_nudge')} ${esc(T('m_nudge'))}</div>` : '';
+    return `<div class="card"><span class="stage-chip">${icon('ui_jobs_new')} ${esc(T('ui_jobs_new'))}</span>${nudge}
       ${stopSummary(j, p, true)}
       <div class="sep"></div>
       ${stopSummary(j, d, true)}
@@ -210,7 +213,7 @@
     document.querySelectorAll('[data-switch]').forEach((b) => { b.onclick = () => { meId = null; store.set('sl_driver', ''); view = 'main'; lastMsgCount = null; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-nav]').forEach((b) => { b.onclick = () => { view = b.dataset.nav; render(); window.scrollTo(0, 0); }; });
     document.querySelectorAll('[data-speak]').forEach((b) => { b.onclick = () => speak(b.dataset.speak); });
-    document.querySelectorAll('[data-respond]').forEach((b) => { b.onclick = async () => { await act(() => api('POST', `/api/jobs/${b.dataset.respond}/respond`, { accept: b.dataset.accept === '1' })); }; });
+    document.querySelectorAll('[data-respond]').forEach((b) => { b.onclick = async () => { await act(() => api('POST', `/api/jobs/${b.dataset.respond}/respond`, { accept: b.dataset.accept === '1', driverId: meId })); }; });
     document.querySelectorAll('[data-act]').forEach((b) => { b.onclick = async () => { await act(() => api('POST', `/api/jobs/${b.dataset.job}/stops/${b.dataset.idx}/${b.dataset.act}`, { by: 'driver' })); }; });
     document.querySelectorAll('[data-photo]').forEach((b) => { b.onclick = () => takePhoto(b.dataset.photo, b.dataset.idx); });
     document.querySelectorAll('[data-trouble]').forEach((b) => { b.onclick = async () => { await act(() => api('POST', `/api/jobs/${b.dataset.job}/messages`, { from: 'driver', key: b.dataset.trouble })); toast(icon('ui_sent') + ' ' + T('ui_sent')); view = 'main'; render(); }; });

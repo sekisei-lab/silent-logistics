@@ -145,3 +145,10 @@ a.btn { text-decoration: none; color: var(--ink); display: inline-block; }
 .dragtip { position: fixed; z-index: 1001; pointer-events: none; background: var(--card); border: 1px solid var(--green); border-radius: 10px; padding: 8px 10px; font-size: 12px; width: 320px; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
 
 #dtoast { border-radius: 14px; width: max-content; max-width: min(640px, 92vw); text-align: left; line-height: 1.45; font-size: 14px; padding: 10px 16px; }
+
+/* 打診中のトラック（案件カード・地図） */
+.offers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.offer-chip { border: 1px solid var(--warn); background: #3a3012; color: #ffe6a8; border-radius: 99px; padding: 3px 10px; font-size: 12px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.offer-chip.done { border-color: var(--line); background: var(--card); color: var(--sub); cursor: default; }
+.veh.offered .veh-badge { outline: 3px dashed var(--warn); outline-offset: 3px; }
+.veh-flag { font-size: 10px; font-weight: 700; background: var(--warn); color: #3b2a00; border-radius: 6px; padding: 0 5px; line-height: 14px; }
