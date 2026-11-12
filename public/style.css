@@ -128,3 +128,5 @@ details > summary { cursor: pointer; }
 .landing a.tile:hover { border-color: var(--green); }
 .landing a.tile b { font-size: 18px; }
 .leaflet-popup-content { color: #1c2230; }
+
+a.btn { text-decoration: none; color: var(--ink); display: inline-block; }

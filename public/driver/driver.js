@@ -77,7 +77,8 @@
   function topbar() {
     const d = me();
     return `<div class="topbar"><div class="who"><img class="mini-truck" src="/truck.svg" alt=""> ${esc(d ? d.name : '')}${d ? ' <span class="status-dot"></span>' : ''}
-      <button class="btn" data-switch="1" style="margin-left:6px;padding:4px 10px" title="Demo: switch driver">👤⇄</button></div>
+      <button class="btn" data-switch="1" style="margin-left:6px;padding:4px 8px" title="Demo: switch driver">👤⇄</button>
+      <a class="btn" href="/" style="padding:4px 8px;font-size:13px" title="Demo: top page">← トップ</a></div>
       <div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}" title="${esc(l.label)}">${l.flag}</button>`).join('')}</div></div>`;
   }
 
@@ -86,7 +87,7 @@
     if (!meId || !me()) {
       bar.classList.add('hidden');
       lang = lang || 'en';
-      app.innerHTML = `<div class="topbar"><div class="who"><img class="mini-truck" src="/truck.svg" alt=""></div><div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}">${l.flag}</button>`).join('')}</div></div>
+      app.innerHTML = `<div class="topbar"><div class="who"><img class="mini-truck" src="/truck.svg" alt=""> <a class="btn" href="/" style="padding:4px 8px;font-size:13px">← トップ</a></div><div class="langs">${LANGS.map((l) => `<button data-lang="${l.code}" class="${l.code === lang ? 'on' : ''}">${l.flag}</button>`).join('')}</div></div>
         <h2>${esc(T('ui_select_driver'))}</h2>` +
         data.drivers.map((d) => `<button class="driver-pick" data-pick="${d.id}"><span class="fl">${LANGS.find((l) => l.code === d.lang).flag}</span><span>${esc(d.name)}<br><span class="muted small">${esc(d.vehicle)}</span></span></button>`).join('');
       bindCommon();
