@@ -198,3 +198,9 @@ a.btn { text-decoration: none; color: var(--ink); display: inline-block; }
 .alert.jump:hover { filter: brightness(1.15); }
 .job-card.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 6px rgba(142,227,127,.9); } 100% { box-shadow: 0 0 0 0 rgba(142,227,127,0); } }
+
+/* AI打診 */
+.btn.ai-btn { border-color: var(--green); color: var(--green); background: transparent; }
+.btn.ai-btn:hover { background: var(--card2); }
+.offer-chip.ai { border-color: var(--green); background: #17381f; color: #d4f7cf; }
+.board-title.row { align-items: center; gap: 10px; }

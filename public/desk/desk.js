@@ -5,6 +5,7 @@
   const ja = (k, p) => tr(k, 'ja', p);
   let data = null, map = null, siteLayer = null;
   const markers = {};
+  const aiCount = {}; // AI打診の台数 { jobId: n }
   const nudgeSel = {}; // 催促・取り下げ用に選択したトラック { jobId: Set(driverId) }
   let alertsOpen = false;
   let selectedJob = null, routeLayer = null; // 案件カードで選択中の案件（出発地→到着地を地図に表示）
@@ -88,7 +89,7 @@
     const order = { open: 0, offered: 1, accepted: 2, inprogress: 3, done: 4 };
     const jobs = data.jobs.slice().sort((a, b) => order[a.state] - order[b.state] || a.windowStart.localeCompare(b.windowStart));
     const boardEl = $('board'), scrollTop = boardEl.scrollTop;
-    boardEl.innerHTML = '<h3 class="board-title">案件ボード</h3>' + jobs.map((j) => {
+    boardEl.innerHTML = `<div class="board-title row wrap"><h3 style="margin:0">案件ボード</h3><span class="grow"></span><button class="btn ai-btn" data-ai-all title="未割当の案件すべてに、上位3台へ並行打診">🤖 未割当すべてにAI打診</button><label class="small" title="デモ用: 打診されたドライバーが数秒後に自動で受諾／辞退します"><input type="checkbox" data-autoresp ${data.settings && data.settings.autoRespond ? 'checked' : ''}> デモ自動応答</label></div>` + jobs.map((j) => {
       const d = j.driverId && drv(j.driverId);
       const stops = j.stops.map((s, i) => `${i ? ' → ' : ''}${esc(site(s.siteId).name)}${s.stage !== 'pending' ? `<span class="tag ${s.stage === 'done' ? 'done' : 'inprogress'}">${STAGE_JA[s.stage]}</span>` : ''}`).join('');
       let assign = '', dropAttr = '';
@@ -102,15 +103,18 @@
           const x = drv(o.driverId);
           if (o.status === 'pending') {
             const mins = Math.max(0, Math.round((Date.now() - new Date(o.ts).getTime()) / 60000));
-            return `<label class="offer-chip"><input type="checkbox" data-nsel="${j.id}" value="${o.driverId}" ${selSet.has(o.driverId) ? 'checked' : ''}> 🚚 ${esc(shortName(x))} <span class="small">打診中・${mins}分${o.nudges ? `・催促${o.nudges}回` : ''}</span></label>`;
+            return `<label class="offer-chip ${o.by === 'ai' ? 'ai' : ''}" title="${esc(o.reason || (o.by === 'ai' ? '' : '手動で打診'))}"><input type="checkbox" data-nsel="${j.id}" value="${o.driverId}" ${selSet.has(o.driverId) ? 'checked' : ''}> ${o.by === 'ai' ? '🤖' : '🚚'} ${esc(shortName(x))} <span class="small">${o.by === 'ai' ? 'AI・' : ''}打診中・${mins}分${o.nudges ? `・催促${o.nudges}回` : ''}</span></label>`;
           }
           return `<span class="offer-chip done">${esc(shortName(x))} ${done[o.status] || o.status}</span>`;
         }).join('')}</div>` : '') +
-          (pend.length ? `<div class="row wrap" style="margin-top:6px"><span class="small muted">打診中 ${pend.length}台</span>
+          (pend.length ? `<div class="row wrap" style="margin-top:6px"><span class="small muted">並行打診 ${pend.length}台（AI ${pend.filter((o) => o.by === 'ai').length}／手動 ${pend.filter((o) => o.by !== 'ai').length}）</span>
             <button class="btn" data-nall="${j.id}">全て選択</button>
             <button class="btn primary" data-nudge="${j.id}" ${selSet.size ? '' : 'disabled'}>⏰ 選択したトラックに催促（${selSet.size}）</button>
             <button class="btn" data-withdraw="${j.id}" ${selSet.size ? '' : 'disabled'}>打診を取り下げ</button></div>` : '') +
-          `<div class="drop-hint">🚚 地図の緑の車両マーカーをここへドラッグして打診${pend.length ? '（複数台に打診できます）' : ''}</div>`;
+          `<div class="row wrap" style="margin-top:6px"><button class="btn ai-btn" data-ai="${j.id}">🤖 AI打診</button>
+            <select data-aicount="${j.id}" title="一度に打診する台数">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${(aiCount[j.id] || 3) === n ? 'selected' : ''}>上位${n}台</option>`).join('')}</select>
+            <span class="small muted">条件に合う順に並行打診</span></div>
+          <div class="drop-hint">🚚 または地図の緑の車両マーカーをここへドラッグして手動で打診</div>`;
       }
       return `<div class="card job-card ${selectedJob === j.id ? 'selected' : ''}" data-job="${j.id}"${dropAttr}><div class="row wrap"><b>${j.id}</b><span class="tag ${j.state}">${STATE_JA[j.state]}</span><span class="grow"></span>
         <span class="small muted">${fmtDate(j.windowStart)} ${fmtTime(j.windowStart)}–${fmtTime(j.windowEnd)}</span></div>
@@ -124,6 +128,29 @@
         renderBoard(); renderMap(); drawRoute(true);
       };
     });
+    document.querySelectorAll('[data-aicount]').forEach((x) => { x.onchange = () => { aiCount[x.dataset.aicount] = Number(x.value); }; });
+    document.querySelectorAll('[data-ai]').forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.ai;
+        try {
+          const r = await api('POST', `/api/jobs/${id}/ai-offer`, { count: aiCount[id] || 3 });
+          notify(`🤖 ${id}: ${r.offered.length}台に並行打診しました（${r.offered.map((d) => shortName(drv(d))).join('・')}）`);
+          selectedJob = id;
+        } catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+        await load();
+      };
+    });
+    const allBtn = document.querySelector('[data-ai-all]');
+    if (allBtn) allBtn.onclick = async () => {
+      try {
+        const r = await api('POST', '/api/ai-offer-all', { count: 3 });
+        const n = r.results.reduce((a, x) => a + x.offered.length, 0);
+        notify(r.results.length ? `🤖 ${r.results.length}件の案件に、のべ${n}台へ並行打診しました` : '打診できる未割当の案件がありません', r.results.length ? undefined : 'crit');
+      } catch (e) { notify('⚠️ ' + e.message, 'crit'); }
+      await load();
+    };
+    const ar = document.querySelector('[data-autoresp]');
+    if (ar) ar.onchange = async () => { await api('POST', '/api/settings', { autoRespond: ar.checked }); notify(ar.checked ? 'デモ自動応答: オン（打診されたドライバーが数秒後に受諾／辞退します）' : 'デモ自動応答: オフ'); await load(); };
     document.querySelectorAll('[data-nsel]').forEach((c) => {
       c.onchange = () => { const set = nudgeSel[c.dataset.nsel] || (nudgeSel[c.dataset.nsel] = new Set()); if (c.checked) set.add(c.value); else set.delete(c.value); renderBoard(); };
     });

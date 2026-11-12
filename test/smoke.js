@@ -94,6 +94,21 @@ server.listen(0, async () => {
     assert.strictEqual(j4.driverId, 'd3'); assert.strictEqual(j4.state, 'accepted');
     assert.strictEqual(j4.offers.find((o) => o.driverId === 'd1').status, 'cancelled', '他の打診は自動取消');
 
+    // AI打診: 条件に合う上位N台へ並行打診（手動のドラッグ打診と併用できる）
+    const aj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's3', windowStart: new Date(Date.now() + 7200e3).toISOString(), truckType: 't10', body: 'van', pallets: 2, cargo: 'ai-test' });
+    const ar = await ok('POST', `/api/jobs/${aj.id}/ai-offer`, { count: 3 });
+    assert.strictEqual(ar.offered.length, 3, '3台に並行打診');
+    let ajj = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === aj.id);
+    assert.strictEqual(ajj.offers.filter((o) => o.status === 'pending' && o.by === 'ai').length, 3);
+    assert.ok(ajj.offers[0].reason, 'AI打診には理由が付く');
+    const manual = ar.offered.length < 8 ? (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === aj.id).candidates.find((c) => !ar.offered.includes(c.driverId) && !c.items.some((i) => i.level === 'error')) : null;
+    if (manual) { await ok('POST', `/api/jobs/${aj.id}/assign`, { driverId: manual.driverId }); }
+    ajj = (await ok('GET', '/api/bootstrap')).jobs.find((x) => x.id === aj.id);
+    assert.ok(ajj.offers.filter((o) => o.status === 'pending').length >= 3, 'AIと手動の並行打診');
+    if (manual) assert.strictEqual(ajj.offers.find((o) => o.driverId === manual.driverId).by, 'manual');
+    const st = await ok('POST', '/api/settings', { autoRespond: false });
+    assert.strictEqual(st.autoRespond, false);
+
     // 新規依頼・拠点登録・定型文以外の拒否
     const nj = await ok('POST', '/api/jobs', { shipperId: 'c1', pickupSiteId: 's1', dropoffSiteId: 's2', windowStart: new Date(Date.now() + 7200e3).toISOString(), vehicleClass: 'medium', cargo: 'テスト', pickupWork: ['w_manual_load'], dropoffWork: [], pickupWh: { forklift: false, helper: true }, dropoffWh: { forklift: true, inspection: true }, tailLift: true, body: 'wing' });
     assert.strictEqual(nj.stops[0].warehouse.forklift, false);

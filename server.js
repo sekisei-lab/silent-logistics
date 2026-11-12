@@ -91,11 +91,12 @@ function seed() {
     run('J-2004', 'c1', 'd8', 't10', 'wing', 6, '雑貨 パレット6枚', -0.3, 1.0, j2004, ['平和島に到着', '受付済み（呼び出し待ち）']),
   );
   jobs.forEach((j) => { j.offers = j.offers || []; });
-  return { sites, drivers, shippers, jobs };
+  return { sites, drivers, shippers, jobs, settings: { autoRespond: false } };
 }
 
 function load() {
   try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch (e) { db = seed(); }
+  db.settings = db.settings || { autoRespond: false };
   save(true);
 }
 function save(now) {
@@ -273,6 +274,16 @@ function httpErr(code, msg) { const e = new Error(msg); e.code = code; return e;
 // ---------------------------------------------------------------- simulation
 function tick() {
   let changed = false;
+  if (db.settings && db.settings.autoRespond) {
+    const now = Date.now();
+    for (const j of db.jobs) {
+      if (j.state !== 'offered') continue;
+      for (const o of (j.offers || []).filter((x) => x.status === 'pending')) {
+        if (!o.respondAt) o.respondAt = now + (8 + Math.random() * 17) * 1000;
+        if (now >= o.respondAt && j.state === 'offered' && o.status === 'pending') { respondOffer(j, o.driverId, Math.random() < 0.5); changed = true; }
+      }
+    }
+  }
   for (const j of db.jobs) {
     if (j.state !== 'inprogress' || !j.driverId) continue;
     const idx = activeStopIdx(j);
@@ -301,7 +312,7 @@ const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' 
 route('GET', '/api/bootstrap', () => ({
   sites: db.sites, shippers: db.shippers,
   drivers: db.drivers.map(driverView),
-  trucks: TRUCKS, bodies: BODIES,
+  trucks: TRUCKS, bodies: BODIES, settings: db.settings,
   jobs: db.jobs.map((j) => { const v = view(j); if (j.state === 'open' || j.state === 'offered') v.candidates = candidatesFor(j); return v; }).sort((a, b) => a.windowStart.localeCompare(b.windowStart)),
 }));
 
@@ -339,31 +350,64 @@ route('GET', '/api/jobs/:id/check', (p, b, q) => {
   return checkAssign(d, j);
 });
 
-// 打診: 1つの案件に複数のトラックへ同時に打診できる（最初に受諾したトラックが担当になる）
+// 打診: 1つの案件に複数のトラックへ同時（並行）に打診できる（最初に受諾したトラックが担当になる）
+// by: 'manual'（地図からのドラッグ）／'ai'（AI打診）
+function addOffer(j, d, by, reason) {
+  j.offers = j.offers || [];
+  const ex = j.offers.find((o) => o.driverId === d.id);
+  if (ex && ex.status === 'pending') throw httpErr(409, `${d.name}にはすでに打診中です`);
+  const now = new Date().toISOString();
+  const rec = { driverId: d.id, ts: now, status: 'pending', nudges: 0, lastNudge: null, by, reason: reason || '', respondAt: null };
+  if (ex) Object.assign(ex, rec); else j.offers.push(rec);
+  j.state = 'offered';
+  event(j, `${d.name}に案件を打診${by === 'ai' ? '（AI打診）' : ''}`, by === 'ai' ? 'ai' : 'desk');
+}
 route('POST', '/api/jobs/:id/assign', (p, b) => {
   const j = job(p.id), d = driver(b.driverId);
   if (!j || !d) throw httpErr(404, '見つかりません');
   if (!['open', 'offered'].includes(j.state)) throw httpErr(409, 'この案件は割当できません');
   const errs = checkAssign(d, j).filter((c) => c.level === 'error');
   if (errs.length) throw httpErr(409, errs.map((e) => e.msg).join(' / '));
-  j.offers = j.offers || [];
-  const ex = j.offers.find((o) => o.driverId === d.id);
-  if (ex && ex.status === 'pending') throw httpErr(409, `${d.name}にはすでに打診中です`);
-  const now = new Date().toISOString();
-  if (ex) Object.assign(ex, { status: 'pending', ts: now, nudges: 0, lastNudge: null });
-  else j.offers.push({ driverId: d.id, ts: now, status: 'pending', nudges: 0, lastNudge: null });
-  j.state = 'offered';
-  event(j, `${d.name}に案件を打診`, 'desk');
+  addOffer(j, d, 'manual', '');
   broadcast(); return view(j);
 });
 
-route('POST', '/api/jobs/:id/respond', (p, b) => {
+// AI打診: 評価の高い順に、条件を満たすトラックへまとめて並行打診する
+const MODE_JA = { idle: '待機中の空車', combine: '走行中に積み合わせ', sequential: '現案件の完了後に連続配車' };
+function aiReason(c) {
+  const t = c.etaMin != null ? `・約${c.etaMin}分` : '';
+  const warn = c.items.filter((i) => i.level === 'warn' && !i.msg.includes('別案件')).length;
+  return `${MODE_JA[c.mode] || ''}${t}${warn ? `（注意${warn}件）` : ''}`;
+}
+function aiOffer(j, count) {
+  if (!['open', 'offered'].includes(j.state)) throw httpErr(409, 'この案件は打診できません');
+  const excluded = new Set((j.offers || []).filter((o) => ['pending', 'declined', 'withdrawn'].includes(o.status)).map((o) => o.driverId));
+  const picks = candidatesFor(j).filter((c) => !c.items.some((i) => i.level === 'error') && !excluded.has(c.driverId)).slice(0, count);
+  picks.forEach((c) => addOffer(j, driver(c.driverId), 'ai', aiReason(c)));
+  return picks;
+}
+route('POST', '/api/jobs/:id/ai-offer', (p, b) => {
   const j = job(p.id);
-  if (!j || j.state !== 'offered') throw httpErr(409, '回答できません');
-  const o = (j.offers || []).find((x) => x.driverId === b.driverId && x.status === 'pending');
-  if (!o) throw httpErr(409, 'この案件への打診がありません');
+  if (!j) throw httpErr(404, '見つかりません');
+  const count = Math.min(8, Math.max(1, Number(b.count) || 3));
+  const picks = aiOffer(j, count);
+  if (!picks.length) throw httpErr(409, '打診できる候補がいません（条件に合う車両がない、または全員に打診済み）');
+  broadcast(); return { job: view(j), offered: picks.map((c) => c.driverId) };
+});
+route('POST', '/api/ai-offer-all', (p, b) => {
+  const count = Math.min(8, Math.max(1, Number(b.count) || 3));
+  const res = [];
+  db.jobs.filter((j) => j.state === 'open').forEach((j) => { try { res.push({ jobId: j.id, offered: aiOffer(j, count).map((c) => c.driverId) }); } catch (e) { /* 候補なしはスキップ */ } });
+  broadcast(); return { results: res };
+});
+route('POST', '/api/settings', (p, b) => { db.settings.autoRespond = !!b.autoRespond; broadcast(); return db.settings; });
+
+// ドライバーの回答（実機の操作・デモ自動応答で共用）
+function respondOffer(j, driverId, accept) {
+  const o = (j.offers || []).find((x) => x.driverId === driverId && x.status === 'pending');
+  if (!o || j.state !== 'offered') throw httpErr(409, 'この案件への打診がありません');
   const d = driver(o.driverId);
-  if (b.accept) {
+  if (accept) {
     o.status = 'accepted'; j.driverId = o.driverId; j.state = 'accepted';
     j.offers.forEach((x) => { if (x !== o && x.status === 'pending') x.status = 'cancelled'; });
     event(j, `${d.name}が受諾`, 'driver');
@@ -371,6 +415,11 @@ route('POST', '/api/jobs/:id/respond', (p, b) => {
     o.status = 'declined'; event(j, `${d.name}が辞退`, 'driver');
     if (!j.offers.some((x) => x.status === 'pending')) j.state = 'open';
   }
+}
+route('POST', '/api/jobs/:id/respond', (p, b) => {
+  const j = job(p.id);
+  if (!j || j.state !== 'offered') throw httpErr(409, '回答できません');
+  respondOffer(j, b.driverId, !!b.accept);
   broadcast(); return view(j);
 });
 
